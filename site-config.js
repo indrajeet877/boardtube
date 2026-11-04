@@ -49,12 +49,12 @@ window.TUBE_CONFIG = {
     },
   ],
   subjectMeta: {
-    "Class 12 Physics": { icon: "⚡", short: "12th Physics", tone: "s2" },
-    "Class 12 Chemistry": { icon: "⚗", short: "12th Chemistry", tone: "s3" },
-    "Class 12 Maths": { icon: "∫", short: "12th Maths", tone: "s1" },
-    "Class 12 Biology": { icon: "🧬", short: "12th Biology", tone: "s4" },
-    "Class 10 Science": { icon: "🔬", short: "10th Science", tone: "s5" },
-    "Class 10 Maths": { icon: "📐", short: "10th Maths", tone: "s6" },
+    "Class 12 Physics": { icon: "⚡", short: "12 Phy", tone: "s2" },
+    "Class 12 Chemistry": { icon: "⚗", short: "12 Chem", tone: "s3" },
+    "Class 12 Maths": { icon: "∫", short: "12 Maths", tone: "s1" },
+    "Class 12 Biology": { icon: "🧬", short: "12 Bio", tone: "s4" },
+    "Class 10 Science": { icon: "🔬", short: "10 Sci", tone: "s5" },
+    "Class 10 Maths": { icon: "📐", short: "10 Maths", tone: "s6" },
   },
   acronyms: {
     1: "coulomb gauss dipole capacitor electrostatics",
