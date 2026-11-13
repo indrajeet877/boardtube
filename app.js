@@ -18,6 +18,32 @@
     window.TUBE_CONFIG || {}
   );
 
+  // Align UPBoard shifted chapter acronym indices (17..48) to actual syllabus chapter_no
+  if (CFG.platformId === "upboard") {
+    CFG.acronyms = {
+      1: "sambandh phalan relations functions",
+      3: "aavyuh matrices",
+      4: "sarnik determinants",
+      5: "avkalan continuity differentiability",
+      7: "samakalan integration",
+      11: "coulomb gauss vidyut aavesh",
+      13: "vidyut dhara ohm kirchhoff",
+      17: "kiran prakashiki ray optics",
+      19: "dwait prakriti parmanu dual nature atoms",
+      21: "vilayan solutions",
+      22: "vaidyut rasayan electrochemistry",
+      23: "rasayanik balgatiki chemical kinetics",
+      37: "hindi vyakaran ras chhand alankar nibandh",
+      39: "vastavik sankhya bahupad real numbers polynomials",
+      40: "dwighat samikaran quadratic",
+      42: "trikonmiti trigonometry",
+      44: "rasayanik abhikriya aml kshar dhatu chemical reactions",
+      45: "jaiv prakram life processes prakash paravartan apvartan light",
+      47: "hindi vyakaran ras chhand alankar nibandh",
+      48: "english first flight footprints grammar",
+    };
+  }
+
   const PEDAGOGY = Object.assign(
     { synonyms: [], chapters: {} },
     window.TUBE_PEDAGOGY || {}
@@ -28,6 +54,11 @@
   const DONE_KEY = `${CFG.storagePrefix}_done_v2`;
   const DONE_VIDEOS_KEY = `${CFG.storagePrefix}_done_videos_v4`;
   const ROLE_KEY = `${CFG.storagePrefix}_role_v4`;
+  const LAST_LECTURE_KEY = `${CFG.storagePrefix}_last_lecture_v5`;
+  const STREAK_KEY = `${CFG.storagePrefix}_streak_v5`;
+  const SELF_CHECK_KEY = `${CFG.storagePrefix}_selfcheck_v5`;
+  const NOTES_KEY = `${CFG.storagePrefix}_notes_v5`;
+  const HW_PACK_KEY = `${CFG.storagePrefix}_hw_pack_v5`;
   const CARDS_PER_CHAPTER_COLLAPSED = 4;
   const FLAT_PAGE_SIZE = 48;
 
@@ -209,19 +240,98 @@
     );
   }
 
+  // Studio v5.0: authoritative pedagogy.js (v5.0) with optional legacy fallback layer
+  let cachedSynonyms = null;
+  const chapterPedCache = new Map();
+
+  function getPedagogyLayers() {
+    const current = window.TUBE_PEDAGOGY || PEDAGOGY || {};
+    const legacy = window.TUBE_PEDAGOGY_LEGACY;
+    return legacy && legacy !== current ? [legacy, current] : [current];
+  }
+
+  function getMergedSynonyms() {
+    if (cachedSynonyms) return cachedSynonyms;
+    const layers = getPedagogyLayers();
+    if (layers.length === 1 && Array.isArray(layers[0].synonyms)) {
+      cachedSynonyms = layers[0].synonyms;
+      return cachedSynonyms;
+    }
+    const out = [];
+    const seen = new Set();
+    for (const layer of layers) {
+      if (!Array.isArray(layer.synonyms)) continue;
+      for (const rule of layer.synonyms) {
+        const sig = JSON.stringify(rule?.triggers || []);
+        if (seen.has(sig)) continue;
+        seen.add(sig);
+        out.push(rule);
+      }
+    }
+    cachedSynonyms = out;
+    return out;
+  }
+
   function getChapterPedagogy(chNo) {
-    const platMap = (PEDAGOGY.chapters && PEDAGOGY.chapters[CFG.platformId]) || {};
-    const entry = platMap[String(chNo)] || {};
-    return {
+    const numKey = Number(chNo) || 0;
+    if (chapterPedCache.has(numKey)) {
+      return chapterPedCache.get(numKey);
+    }
+    const entry = {};
+    for (const layer of getPedagogyLayers()) {
+      const platMap = (layer.chapters || {})[CFG.platformId] || {};
+      const e = platMap[String(numKey)] || platMap[numKey];
+      if (e && typeof e === "object") Object.assign(entry, e);
+    }
+    const chMeta = state?.syllabusByNo?.get(numKey);
+    const chTitle = chMeta?.chapter || `Chapter ${String(numKey).padStart(2, "0")}`;
+    const chPrefix = CFG.platformId === "olympiad" ? "Mod" : "Ch";
+
+    const rawMustKnow =
+      entry.must_know || entry.mustKnow || entry.concepts || entry.formulas;
+    const mustKnow =
+      Array.isArray(rawMustKnow) && rawMustKnow.length
+        ? rawMustKnow.map(String)
+        : [
+            `Core definitions, standard forms & sign conventions in ${chTitle}`,
+            `High-yield theorems, boundary conditions & standard results for ${chTitle}`,
+            `Multi-concept problem patterns & elimination checks on ${chTitle}`,
+          ];
+
+    const rawChecks =
+      entry.check || entry.checks || entry.self_check || entry.selfCheck;
+    const checkItems =
+      Array.isArray(rawChecks) && rawChecks.length
+        ? rawChecks.map(String)
+        : [
+            `I can recall and apply the core formulas & definitions of ${chTitle} without hints.`,
+            `I have solved standard & previous-year exam questions on ${chTitle} accurately.`,
+            `I can spot and avoid the #1 exam trap & sign/unit mistakes in ${chTitle}.`,
+          ];
+
+    const result = {
       hi: entry.hi || "",
-      ref: entry.ref || `Ch ${String(chNo).padStart(2, "0")}`,
+      ref: entry.ref || `${chPrefix} ${String(numKey).padStart(2, "0")}`,
       roi: entry.roi || "core_high",
       prereq: Number(entry.prereq) || 0,
       tip:
         entry.tip ||
         "Start with Step 1 for foundational clarity, then revise and practice exam questions.",
-      sub_idx: Number(entry.sub_idx) || Number(chNo) || 1,
+      sub_idx: Number(entry.sub_idx) || numKey || 1,
+      est_hours:
+        Number(entry.est_hours ?? entry.estHours ?? entry.hours) || 6,
+      must_know: mustKnow,
+      trap:
+        entry.trap ||
+        entry.exam_trap ||
+        entry.examTrap ||
+        `Verify domain restrictions, sign conventions, and SI units before final substitution in ${chTitle}.`,
+      check: checkItems,
     };
+    if (state?.syllabusByNo?.size > 0) {
+      chapterPedCache.set(numKey, result);
+    }
+    return result;
   }
 
   function getRoiMeta(roi) {
@@ -337,6 +447,34 @@
     } catch {}
   }
 
+  function loadJson(key, fallback) {
+    try {
+      const raw = localStorage.getItem(key);
+      if (!raw) return fallback;
+      const parsed = JSON.parse(raw);
+      return parsed ?? fallback;
+    } catch {
+      return fallback;
+    }
+  }
+
+  function saveJson(key, val) {
+    try {
+      if (val === null || val === undefined) {
+        localStorage.removeItem(key);
+      } else {
+        localStorage.setItem(key, JSON.stringify(val));
+      }
+    } catch {}
+  }
+
+  function localDayStamp(d = new Date()) {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+  }
+
   function loadInitialRole() {
     try {
       const saved = localStorage.getItem(ROLE_KEY);
@@ -346,6 +484,7 @@
   }
 
   const initialRole = loadInitialRole();
+  const rawPack = loadJson(HW_PACK_KEY, []);
 
   const state = {
     meta: null,
@@ -371,6 +510,17 @@
     saved: loadSet(SAVED_KEY),
     doneChapters: loadSet(DONE_KEY),
     doneVideos: loadSet(DONE_VIDEOS_KEY),
+    lastLecture: loadJson(LAST_LECTURE_KEY, null),
+    continueDismissed: false,
+    streakDays: Array.isArray(loadJson(STREAK_KEY, []))
+      ? loadJson(STREAK_KEY, []).map(String)
+      : [],
+    selfCheck: loadJson(SELF_CHECK_KEY, {}) || {},
+    cheatsheetOpen: true,
+    lectureNotes: loadJson(NOTES_KEY, {}) || {},
+    homeworkPack: Array.isArray(rawPack) ? rawPack.map(String).filter(Boolean) : [],
+    homeworkTrayOpen: false,
+    pickIds: [],
     pickerKind: "lang",
     activePlayerVideo: null,
     isListening: false,
@@ -388,6 +538,8 @@
     shareCopyBtn: document.getElementById("share-copy-btn"),
     savedDeckBtn: document.getElementById("saved-deck-btn"),
     cntSaved: document.getElementById("cnt-saved"),
+    homeworkPackBtn: document.getElementById("homework-pack-btn"),
+    cntPack: document.getElementById("cnt-pack"),
     themeToggle: document.getElementById("theme-toggle"),
     subline: document.getElementById("subline"),
     subjectTabs: document.getElementById("subject-tabs"),
@@ -409,10 +561,20 @@
     syllabusTree: document.getElementById("syllabus-tree"),
     liveStatus: document.getElementById("live-status"),
     count: document.getElementById("count"),
+    continueStudyBar: document.getElementById("continue-study-bar"),
+    continueStudyBtn: document.getElementById("continue-study-btn"),
+    continueStudyText: document.getElementById("continue-study-text"),
+    continueChBtn: document.getElementById("continue-ch-btn"),
+    continueChText: document.getElementById("continue-ch-text"),
+    studyStreakPill: document.getElementById("study-streak-pill"),
+    continueDismissBtn: document.getElementById("continue-dismiss-btn"),
+    assignedPackSection: document.getElementById("assigned-pack-section"),
     visualCompass: document.getElementById("visual-compass"),
     compassToggleBtn: document.getElementById("compass-toggle-btn"),
     compassBody: document.getElementById("compass-body"),
     compassLangs: document.getElementById("compass-langs"),
+    compassExamBadge: document.getElementById("compass-exam-badge"),
+    compassExams: document.getElementById("compass-exams"),
     compassSituations: document.getElementById("compass-situations"),
     compassChapterSelect: document.getElementById("compass-chapter-select"),
     compassChapters: document.getElementById("compass-chapters"),
@@ -430,6 +592,7 @@
     mobEduLabel: document.getElementById("mob-edu-label"),
     mobShareBtn: document.getElementById("mob-share-btn"),
     syllabusDialog: document.getElementById("syllabus-dialog"),
+    drawerTitle: document.getElementById("drawer-title"),
     drawerAllChBtn: document.getElementById("drawer-all-ch-btn"),
     drawerStatProgress: document.getElementById("drawer-stat-progress"),
     drawerChFilter: document.getElementById("drawer-ch-filter"),
@@ -452,11 +615,36 @@
     playerTitle: document.getElementById("player-title"),
     playerStage: document.getElementById("player-stage"),
     playerSamples: document.getElementById("player-samples"),
+    playerUpnext: document.getElementById("player-upnext"),
+    playerNotesPanel: document.getElementById("player-notes-panel"),
+    playerNotesStatus: document.getElementById("player-notes-status"),
+    playerNotesInput: document.getElementById("player-notes-input"),
+    playerNotesStampBtn: document.getElementById("player-notes-stamp-btn"),
+    playerNotesCopyBtn: document.getElementById("player-notes-copy-btn"),
+    playerNotesWaBtn: document.getElementById("player-notes-wa-btn"),
+    homeworkTray: document.getElementById("homework-tray"),
+    hwTrayTitle: document.getElementById("hw-tray-title"),
+    hwTrayHint: document.getElementById("hw-tray-hint"),
+    hwTrayCloseBtn: document.getElementById("hw-tray-close-btn"),
+    hwTrayChips: document.getElementById("hw-tray-chips"),
+    hwWhatsappBtn: document.getElementById("hw-whatsapp-btn"),
+    hwCopyBtn: document.getElementById("hw-copy-btn"),
+    hwPreviewBtn: document.getElementById("hw-preview-btn"),
+    hwClearBtn: document.getElementById("hw-clear-btn"),
     shareToast: document.getElementById("share-toast"),
     toastMsg: document.getElementById("toast-msg"),
     toastWaLink: document.getElementById("toast-wa-link"),
     toastCloseBtn: document.getElementById("toast-close-btn"),
   };
+
+  const IS_OLYMPIAD = CFG.platformId === "olympiad";
+  const RAIL_MQ = window.matchMedia("(min-width: 1024px)");
+  let railTreeDirty = true;
+  let drawerTreeDirty = true;
+  let streamRenderToken = 0;
+  const UNIT_SHORT = IS_OLYMPIAD ? "Mod" : "Ch";
+  const UNIT_SINGULAR = IS_OLYMPIAD ? "Module" : "Chapter";
+  const UNIT_PLURAL = IS_OLYMPIAD ? "Modules" : "Chapters";
 
   let toastTimer = null;
   let speechRecognizer = null;
@@ -705,16 +893,40 @@
       v._rankTrend = Number(v.trend_score) || 0;
     }
 
+    const formatTokens = [];
+    if (v._isPyq || v._vibe.key === "pyq") {
+      formatTokens.push(
+        "pyq pyqs previous year question questions solved paper numerical numericals problem problems practice dpp mcq mock"
+      );
+    }
+    if (
+      v._isQuickRevision ||
+      v._vibe.key === "oneshot" ||
+      v._vibe.key === "recap"
+    ) {
+      formatTokens.push(
+        "one shot oneshot 1 shot 1-shot quick revision rapid formula formulas recap marathon crash summary derivations derivation"
+      );
+    }
+    if (v.provider === "playlist" || v._vibe.key === "beginner") {
+      formatTokens.push(
+        "playlist playlists full course series complete zero to hero basics foundational scratch"
+      );
+    }
+
     v._search = [
       v.title,
       v.chapter,
       `ch ${v.chapter_no}`,
       `ch ${pad2(v.chapter_no)}`,
       `chapter ${v.chapter_no}`,
+      `mod ${v.chapter_no}`,
+      `module ${v.chapter_no}`,
       ped.hi,
       ped.ref,
       `ncert ch ${ped.sub_idx}`,
       v._vibe.label,
+      formatTokens.join(" "),
       v.unit,
       v.subject,
       v.educator,
@@ -763,8 +975,17 @@
         match: (s) => /bio|botany|zoology|जीव/i.test(s),
       },
       {
-        re: /\b(?:science|vigyan)\b|विज्ञान/i,
+        re: /\b(?:science|vigyan|ijso|nsejs)\b|विज्ञान/i,
         match: (s) => /science|विज्ञान/i.test(s),
+        fallbackMatch: (s) => /phys|chem|bio|botany|zoology|astron/i.test(s),
+      },
+      {
+        re: /\b(?:informatics|coding|cs|ioi|zco|inoi)\b/i,
+        match: (s) => /inform|comp/i.test(s),
+      },
+      {
+        re: /\b(?:astronomy|astro|ioaa)\b/i,
+        match: (s) => /astron/i.test(s),
       },
       {
         re: /\b(?:social\s*science|sst|samajik)\b|सामाजिक/i,
@@ -773,7 +994,10 @@
     ];
     for (const r of rules) {
       if (r.re.test(normText)) {
-        const matchedSubjects = state.subjects.filter(r.match);
+        let matchedSubjects = state.subjects.filter(r.match);
+        if (!matchedSubjects.length && r.fallbackMatch) {
+          matchedSubjects = state.subjects.filter(r.fallbackMatch);
+        }
         if (matchedSubjects.length) {
           return { regex: r.re, subjects: matchedSubjects };
         }
@@ -782,16 +1006,44 @@
     return null;
   }
 
+  function videoMatchesParsedClassNum(v, classNum) {
+    if (!classNum) return true;
+    const raw = String(v.class_level || "");
+    if (raw === `Class ${classNum}`) return true;
+    const rangeMatch = raw.match(/(\d{1,2})\s*[–-]\s*(\d{1,2})/);
+    if (rangeMatch) {
+      const lo = Number(rangeMatch[1]);
+      const hi = Number(rangeMatch[2]);
+      return classNum >= lo && classNum <= hi;
+    }
+    return false;
+  }
+
   function triggerMatchesText(normText, trigger) {
     const t = String(trigger || "").toLowerCase().trim();
     if (!t) return false;
-    // Non-ASCII (Devanagari/regional) or multi-word / slash expressions
     if (/[^\x00-\x7F]/.test(t) || /[\s/]/.test(t)) {
       return normText.includes(t);
     }
     const escaped = t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const boundaryRe = new RegExp(`(?:^|\\s|[,.;:!?()\\-])${escaped}(?:$|\\s|[,.;:!?()\\-])`, "i");
+    const boundaryRe = new RegExp(
+      `(?:^|\\s|[,.;:!?()\\-])${escaped}(?:$|\\s|[,.;:!?()\\-])`,
+      "i"
+    );
     return boundaryRe.test(normText);
+  }
+
+  function stripTriggerFromText(normText, trigger) {
+    const t = String(trigger || "").toLowerCase().trim();
+    if (!t) return normText;
+    const escaped = t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    if (/[^\x00-\x7F]/.test(t) || /[\s/]/.test(t)) {
+      return normText.replace(new RegExp(escaped, "gi"), " ");
+    }
+    return normText.replace(
+      new RegExp(`(^|\\s|[,.;:!?()\\-])${escaped}(?=$|\\s|[,.;:!?()\\-])`, "gi"),
+      " "
+    );
   }
 
   let cachedQueryKey = null;
@@ -799,7 +1051,7 @@
 
   function analyzeStudentQuery(rawQuery) {
     const raw = String(rawQuery || "").trim();
-    const cacheKey = `${raw}||${state.subject}||${state.classLevel}`;
+    const cacheKey = `${raw}||${state.subject}||${state.classLevel}||${state.syllabus.length}`;
     if (cacheKey === cachedQueryKey && cachedQueryPlan) {
       return cachedQueryPlan;
     }
@@ -814,8 +1066,11 @@
       const emptyPlan = {
         raw: "",
         hasQuery: false,
+        parsedClassNum: 0,
+        parsedSubjects: [],
         chapterMatchSet: null,
         expandGroups: [],
+        formatIntents: [],
         leftoverTokens: [],
         bannerTitle: "",
         suggestedChapters: [],
@@ -826,18 +1081,26 @@
     }
 
     let working = cleaned;
-    let parsedClass = "";
+    let parsedClassNum = 0;
     const clsMatch = working.match(
-      /(?:\bclass\s*(10|11|12)\b|\b(10|11|12)\s*(?:th|वीं)\b|कक्षा\s*(10|11|12))/i
+      /(?:^|\s)(?:(?:class|cls|kaksha|कक्षा)\s*(8|9|10|11|12)\s*(?:th|वीं)?|(8|9|10|11|12)\s*(?:th|वीं))(?=\s|$)/i
     );
     if (clsMatch) {
-      const num = clsMatch[1] || clsMatch[2] || clsMatch[3];
-      parsedClass = `Class ${num}`;
+      parsedClassNum = Number(clsMatch[1] || clsMatch[2]) || 0;
+      working = working.replace(clsMatch[0], " ");
     }
 
     const subjInfo = matchSubjectKeyword(working);
+    const parsedSubjects = subjInfo ? subjInfo.subjects : [];
+    if (subjInfo) {
+      working = working.replace(
+        new RegExp(subjInfo.regex.source, "gi"),
+        " "
+      );
+    }
+
     const chNumMatch = working.match(
-      /(?:^|\s)(?:ch|chap|chapter|mod|module|adhyay|अध्याय|पाठ)\s*[-:.#]?\s*0*(\d{1,2})(?:\b|$)/i
+      /(?:^|\s)(?:ch|chap|chapter|mod|module|adhyay|अध्याय|पाठ)\s*[-:.#]?\s*0*(\d{1,2})(?=\s|$)/i
     );
 
     let chapterMatchSet = null;
@@ -848,46 +1111,61 @@
       const targetNum = Number(chNumMatch[1]);
       chapterMatchSet = new Set();
       working = working.replace(chNumMatch[0], " ");
-      if (clsMatch) working = working.replace(clsMatch[0], " ");
-      if (subjInfo) working = working.replace(subjInfo.regex, " ");
 
-      const effectiveClass =
-        parsedClass ||
-        (state.classLevel.startsWith("Class ") ? state.classLevel : "");
-      const effectiveSubjects = subjInfo
-        ? subjInfo.subjects
+      const stateClsNum = state.classLevel.startsWith("Class ")
+        ? Number(state.classLevel.replace(/\D+/g, "")) || 0
+        : state.classLevel === "jr"
+          ? 10
+          : state.classLevel === "sr"
+            ? 12
+            : 0;
+      const effectiveClassNum = parsedClassNum || stateClsNum;
+      const effectiveSubjects = parsedSubjects.length
+        ? parsedSubjects
         : state.subject !== "All" && state.subject !== "Saved"
           ? [state.subject]
           : [];
 
-      // First try NCERT subject/class chapter index when class or subject is specified
-      for (const ch of state.syllabus) {
-        const ped = getChapterPedagogy(ch.chapter_no);
-        const subjOk =
-          !effectiveSubjects.length || effectiveSubjects.includes(ch.subject);
-        const chVideos = state.videos.filter(
-          (v) => v.chapter_no === ch.chapter_no
-        );
-        const clsOk =
-          !effectiveClass ||
-          chVideos.some((v) => v.class_level === effectiveClass);
-
-        if (effectiveSubjects.length || effectiveClass) {
+      // 1. Match textbook sub_idx within matched subject & class/range
+      if (effectiveSubjects.length || effectiveClassNum) {
+        for (const ch of state.syllabus) {
+          const ped = getChapterPedagogy(ch.chapter_no);
+          const subjOk =
+            !effectiveSubjects.length || effectiveSubjects.includes(ch.subject);
+          const chVideos = state.videos.filter(
+            (v) => v.chapter_no === ch.chapter_no
+          );
+          const clsOk =
+            !effectiveClassNum ||
+            chVideos.some((v) =>
+              videoMatchesParsedClassNum(v, effectiveClassNum)
+            );
           if (subjOk && clsOk && ped.sub_idx === targetNum) {
             chapterMatchSet.add(ch.chapter_no);
           }
         }
       }
 
-      // Also include direct chapter_no match if no subject/class constraint conflicted or set was empty
-      if (
-        (!effectiveSubjects.length && !effectiveClass) ||
-        chapterMatchSet.size === 0
-      ) {
-        if (state.syllabusByNo.has(targetNum)) {
+      // 2. If class range missed (e.g. Olympiad Physics only in Sr 11-12), match sub_idx within effectiveSubjects
+      if (chapterMatchSet.size === 0 && effectiveSubjects.length) {
+        for (const ch of state.syllabus) {
+          if (!effectiveSubjects.includes(ch.subject)) continue;
+          const ped = getChapterPedagogy(ch.chapter_no);
+          if (ped.sub_idx === targetNum || ch.chapter_no === targetNum) {
+            chapterMatchSet.add(ch.chapter_no);
+          }
+        }
+      }
+
+      // 3. Direct chapter_no match ONLY if compatible with effectiveSubjects
+      if (chapterMatchSet.size === 0 && state.syllabusByNo.has(targetNum)) {
+        const directCh = state.syllabusByNo.get(targetNum);
+        if (
+          !effectiveSubjects.length ||
+          effectiveSubjects.includes(directCh.subject)
+        ) {
           chapterMatchSet.add(targetNum);
         }
-        // If user typed e.g. "ch 1" with All subjects, also surface Class 11/12 starter chapters if direct matched
       }
 
       for (const no of chapterMatchSet) {
@@ -895,34 +1173,40 @@
       }
       if (suggestedNos.length) {
         const firstCh = state.syllabusByNo.get(suggestedNos[0]);
+        const chWord = CFG.platformId === "olympiad" ? "Module" : "Chapter";
         bannerTitle = firstCh
-          ? `Matched Textbook Chapter ${pad2(targetNum)}`
+          ? `Matched ${firstCh.subject} ${chWord} ${pad2(firstCh.chapter_no)}: ${firstCh.chapter}`
           : "";
       }
     }
 
-    // Synonym & Phonetic Hinglish Dictionary Lookup
+    // Synonym & Phonetic Hinglish Dictionary Lookup (strips ALL matching triggers per rule)
     const expandGroups = [];
-    const rules = Array.isArray(PEDAGOGY.synonyms) ? PEDAGOGY.synonyms : [];
+    const synonymSource = getMergedSynonyms();
+    const rules = Array.isArray(synonymSource) ? synonymSource : [];
     for (const rule of rules) {
       if (!Array.isArray(rule.triggers)) continue;
-      const matchedTrig = rule.triggers.find((trig) =>
+      const matchedTrigs = rule.triggers.filter((trig) =>
         triggerMatchesText(working, trig)
       );
-      if (matchedTrig) {
+      if (matchedTrigs.length) {
         expandGroups.push({
-          trigger: matchedTrig,
+          trigger: matchedTrigs[0],
           label: rule.label,
           expand: (rule.expand || []).map((x) => x.toLowerCase()),
         });
-        const esc = matchedTrig.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-        working = working.replace(new RegExp(esc, "gi"), " ");
+        for (const trig of matchedTrigs) {
+          working = stripTriggerFromText(working, trig);
+        }
       }
     }
 
     if (expandGroups.length) {
       bannerTitle = expandGroups.map((g) => g.label).join(" + ");
       for (const ch of state.syllabus) {
+        if (parsedSubjects.length && !parsedSubjects.includes(ch.subject)) {
+          continue;
+        }
         const ped = getChapterPedagogy(ch.chapter_no);
         const chHay =
           `${ch.chapter} ${ch.unit} ${ped.hi} ${CFG.acronyms[ch.chapter_no] || ""}`.toLowerCase();
@@ -938,17 +1222,88 @@
       }
     }
 
-    const stopWords = new Set(["class", "chapter", "ch", "in", "ka", "ke", "ki", "aur", "and"]);
+    // Extract Format / Study Intent Modifiers cleanly so titles using "Solved Problems" vs "Numericals" or "1-Shot" vs "One Shot" match
+    const formatIntents = [];
+    const oneShotRe =
+      /(?:^|\s)(?:one\s*-?\s*shots?|1\s*-?\s*shots?|oneshots?|mahamarathon|marathon|quick\s+revision|rapid\s+revision|formula\s+recap|mind\s*map)(?=\s|$)/gi;
+    if (oneShotRe.test(working)) {
+      formatIntents.push("oneshot");
+      working = working.replace(oneShotRe, " ");
+    }
+    const pyqNumRe =
+      /(?:^|\s)(?:pyqs?|previous\s+year(?:\s+questions?)?|numericals?|numerical|derivations?|derivation|mock\s+tests?)(?=\s|$)/gi;
+    if (pyqNumRe.test(working)) {
+      formatIntents.push("pyq");
+      working = working.replace(pyqNumRe, " ");
+    }
+    const playlistRe =
+      /(?:^|\s)(?:playlists?|full\s+course|complete\s+course)(?=\s|$)/gi;
+    if (playlistRe.test(working)) {
+      formatIntents.push("playlist");
+      working = working.replace(playlistRe, " ");
+    }
+
+    const stopWords = new Set([
+      "class",
+      "cls",
+      "kaksha",
+      "कक्षा",
+      "chapter",
+      "chap",
+      "ch",
+      "mod",
+      "module",
+      "adhyay",
+      "अध्याय",
+      "पाठ",
+      "ncert",
+      "in",
+      "on",
+      "of",
+      "for",
+      "to",
+      "the",
+      "with",
+      "by",
+      "from",
+      "ka",
+      "ke",
+      "ki",
+      "ko",
+      "se",
+      "me",
+      "mein",
+      "par",
+      "wala",
+      "wali",
+      "aur",
+      "and",
+      "or",
+      "video",
+      "videos",
+      "lecture",
+      "lectures",
+      "session",
+      "sessions",
+      "full",
+      "complete",
+      "best",
+      "top",
+    ]);
+
     const leftoverTokens = working
       .trim()
       .split(/\s+/)
-      .filter((tok) => tok && !( (chapterMatchSet || expandGroups.length) && stopWords.has(tok) ));
+      .filter((tok) => tok && !stopWords.has(tok));
 
     const plan = {
       raw,
       hasQuery: true,
+      parsedClassNum,
+      parsedSubjects,
       chapterMatchSet,
       expandGroups,
+      formatIntents,
       leftoverTokens,
       bannerTitle,
       suggestedChapters: suggestedNos
@@ -961,7 +1316,65 @@
     return plan;
   }
 
+  function matchesFormatIntents(v, intents) {
+    for (const intent of intents) {
+      if (intent === "oneshot") {
+        if (
+          !v._isQuickRevision &&
+          v._vibe.key !== "oneshot" &&
+          v._vibe.key !== "recap"
+        ) {
+          return false;
+        }
+      } else if (intent === "pyq") {
+        if (!v._isPyq && v._vibe.key !== "pyq") return false;
+      } else if (intent === "playlist") {
+        if (v.provider !== "playlist" && v._vibe.key !== "beginner") {
+          return false;
+        }
+      }
+    }
+    return true;
+  }
+
+  // Zero-Lag Engine: a single renderAll() previously ran ~15 full-corpus scans
+  // (facets, compass, trees, subject tabs). Results are memoized per filter tuple
+  // and invalidated only when the dataset or the Saved set changes.
+  // Returned arrays are shared — callers must .slice() before sorting.
+  const FILTER_CACHE_MAX = 96;
+  const filterCache = new Map();
+  let filterEpoch = 0;
+
+  function invalidateFilterCache() {
+    filterEpoch += 1;
+    filterCache.clear();
+  }
+
   function filterVideosCustom(overrides = {}) {
+    const subj = overrides.subject ?? state.subject;
+    const cacheKey = [
+      filterEpoch,
+      subj,
+      overrides.classLevel ?? state.classLevel,
+      overrides.chapterNo ?? state.chapterNo,
+      overrides.query ?? state.query,
+      overrides.lang ?? state.lang,
+      overrides.exam ?? state.exam,
+      overrides.educator ?? state.educator,
+      overrides.sort ?? state.sort,
+      state.videos.length,
+    ].join("\u241f");
+    const hit = filterCache.get(cacheKey);
+    if (hit) return hit;
+    const result = filterVideosUncached(overrides);
+    if (filterCache.size >= FILTER_CACHE_MAX) {
+      filterCache.delete(filterCache.keys().next().value);
+    }
+    filterCache.set(cacheKey, result);
+    return result;
+  }
+
+  function filterVideosUncached(overrides = {}) {
     const subj = overrides.subject ?? state.subject;
     const cls = overrides.classLevel ?? state.classLevel;
     const chNo = overrides.chapterNo ?? state.chapterNo;
@@ -973,7 +1386,7 @@
 
     const qPlan = qText ? analyzeStudentQuery(qText) : null;
 
-    return state.videos.filter((v) => {
+    const baseCandidates = state.videos.filter((v) => {
       if (subj === "Saved") {
         if (!state.saved.has(v._key)) return false;
       } else if (subj !== "All" && v.subject !== subj) {
@@ -988,17 +1401,18 @@
 
       if (qPlan && qPlan.hasQuery) {
         if (
+          subj === "All" &&
+          qPlan.parsedSubjects.length > 0 &&
+          !qPlan.parsedSubjects.includes(v.subject)
+        ) {
+          return false;
+        }
+        if (
           qPlan.chapterMatchSet &&
           qPlan.chapterMatchSet.size > 0 &&
           !qPlan.chapterMatchSet.has(v.chapter_no)
         ) {
           return false;
-        }
-        if (qPlan.expandGroups.length > 0) {
-          for (const grp of qPlan.expandGroups) {
-            const anyPhrase = grp.expand.some((p) => v._search.includes(p));
-            if (!anyPhrase) return false;
-          }
         }
         if (qPlan.leftoverTokens.length > 0) {
           for (const tok of qPlan.leftoverTokens) {
@@ -1008,6 +1422,56 @@
       }
       return true;
     });
+
+    if (!qPlan || !qPlan.hasQuery) return baseCandidates;
+
+    // Apply expandGroups (require ALL groups if any video satisfies all; otherwise union OR across groups)
+    let topicMatched = baseCandidates;
+    if (qPlan.expandGroups.length > 0) {
+      const allGroupHits = baseCandidates.filter((v) =>
+        qPlan.expandGroups.every((grp) =>
+          grp.expand.some((p) => v._search.includes(p))
+        )
+      );
+      if (allGroupHits.length > 0) {
+        topicMatched = allGroupHits;
+      } else if (qPlan.expandGroups.length >= 2) {
+        topicMatched = baseCandidates.filter((v) =>
+          qPlan.expandGroups.some((grp) =>
+            grp.expand.some((p) => v._search.includes(p))
+          )
+        );
+      } else {
+        topicMatched = [];
+      }
+    }
+
+    // Apply parsedClassNum constraint when user typed class without chapter number (graceful fallback if 0)
+    if (
+      topicMatched.length > 0 &&
+      cls === "all" &&
+      qPlan.parsedClassNum > 0 &&
+      !qPlan.chapterMatchSet
+    ) {
+      const clsFiltered = topicMatched.filter((v) =>
+        videoMatchesParsedClassNum(v, qPlan.parsedClassNum)
+      );
+      if (clsFiltered.length > 0) {
+        topicMatched = clsFiltered;
+      }
+    }
+
+    // Apply formatIntents (e.g. "pyq", "numericals", "one shot", "playlist") with graceful topic fallback
+    if (topicMatched.length > 0 && qPlan.formatIntents.length > 0) {
+      const strictFmt = topicMatched.filter((v) =>
+        matchesFormatIntents(v, qPlan.formatIntents)
+      );
+      if (strictFmt.length > 0) {
+        return strictFmt;
+      }
+    }
+
+    return topicMatched;
   }
 
   function getFilteredVideos() {
@@ -1017,11 +1481,65 @@
   /* ==========================================================================
      STUDY TRACKER HELPERS (localStorage Persistence for Chapters & Videos)
      ========================================================================== */
+  function recordStudyActivity() {
+    const today = localDayStamp();
+    if (!state.streakDays.includes(today)) {
+      state.streakDays.push(today);
+      state.streakDays.sort();
+      if (state.streakDays.length > 90) {
+        state.streakDays = state.streakDays.slice(-90);
+      }
+      saveJson(STREAK_KEY, state.streakDays);
+    }
+  }
+
+  function computeStudyStreak() {
+    if (!Array.isArray(state.streakDays) || !state.streakDays.length) return 0;
+    const unique = Array.from(new Set(state.streakDays)).sort();
+    const today = localDayStamp();
+    const yestDate = new Date();
+    yestDate.setDate(yestDate.getDate() - 1);
+    const yesterday = localDayStamp(yestDate);
+    const latest = unique[unique.length - 1];
+    if (latest !== today && latest !== yesterday) return 0;
+
+    let streak = 1;
+    let cursor = new Date(`${latest}T12:00:00`);
+    for (let i = unique.length - 2; i >= 0; i -= 1) {
+      cursor.setDate(cursor.getDate() - 1);
+      if (unique[i] === localDayStamp(cursor)) {
+        streak += 1;
+      } else {
+        break;
+      }
+    }
+    return streak;
+  }
+
+  function recordLastLecture(v) {
+    if (!v) return;
+    const entry = {
+      key: v._key,
+      video_id: v.video_id,
+      provider: v.provider,
+      chapter_no: v.chapter_no,
+      chapter: v.chapter,
+      title: v.title,
+      educator: v.educator || v.channel || "",
+      ts: Date.now(),
+    };
+    state.lastLecture = entry;
+    state.continueDismissed = false;
+    saveJson(LAST_LECTURE_KEY, entry);
+    recordStudyActivity();
+  }
+
   function toggleChapterDone(chNo) {
     const k = String(chNo);
     const nowDone = !state.doneChapters.has(k);
     if (nowDone) {
       state.doneChapters.add(k);
+      recordStudyActivity();
     } else {
       state.doneChapters.delete(k);
     }
@@ -1035,8 +1553,8 @@
     const nowDone = !state.doneVideos.has(vKey);
     if (nowDone) {
       state.doneVideos.add(vKey);
-      // Increment chapter syllabus progress bar immediately when a chapter lecture is mastered
       state.doneChapters.add(chKey);
+      recordStudyActivity();
     } else {
       state.doneVideos.delete(vKey);
       const anyOtherDoneInCh = state.videos.some(
@@ -1056,13 +1574,69 @@
     const k = v._key;
     if (state.saved.has(k)) state.saved.delete(k);
     else state.saved.add(k);
+    invalidateFilterCache();
     saveSet(SAVED_KEY, state.saved);
     return state.saved.has(k);
+  }
+
+  function getVideoPickId(v) {
+    return String(v.video_id || "").trim();
+  }
+
+  function isVideoInPack(v) {
+    const pid = getVideoPickId(v);
+    return Boolean(pid) && state.homeworkPack.includes(pid);
+  }
+
+  function toggleHomeworkPack(v) {
+    const pid = getVideoPickId(v);
+    if (!pid) return false;
+    const idx = state.homeworkPack.indexOf(pid);
+    if (idx !== -1) {
+      state.homeworkPack.splice(idx, 1);
+      saveJson(HW_PACK_KEY, state.homeworkPack);
+      return false;
+    }
+    if (state.homeworkPack.length >= 12) {
+      showShareToast(
+        "📋 Up to 12 lectures can be added to one Homework Pack.",
+        "",
+        true
+      );
+      return false;
+    }
+    state.homeworkPack.push(pid);
+    state.homeworkTrayOpen = true;
+    saveJson(HW_PACK_KEY, state.homeworkPack);
+    return true;
+  }
+
+  function resolvePickIdsToVideos(ids) {
+    if (!Array.isArray(ids) || !ids.length) return [];
+    const seen = new Set();
+    const out = [];
+    for (const rawId of ids) {
+      const token = String(rawId || "").trim();
+      if (!token) continue;
+      const low = token.toLowerCase();
+      const found = state.videos.find(
+        (v) =>
+          String(v.video_id) === token ||
+          v._key === token ||
+          shortRef(v).toLowerCase() === low
+      );
+      if (found && !seen.has(found._key)) {
+        seen.add(found._key);
+        out.push(found);
+      }
+    }
+    return out;
   }
 
   function jumpToChapter(chNo) {
     const target = Number(chNo) || 0;
     state.chapterNo = target;
+    state.pickIds = [];
     if (target > 0) {
       const ch = state.syllabusByNo.get(target);
       if (
@@ -1082,8 +1656,17 @@
       }
     }
     state.flatLimit = FLAT_PAGE_SIZE;
+    // Zero-Lag: read scroll position BEFORE mutating the DOM (reading it after
+    // forced a synchronous full-document layout, ~150ms at 4x CPU), and defer
+    // the smooth scroll to the next frame.
+    const wasScrolled = window.scrollY > 0;
     renderAll({ announce: true });
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    if (wasScrolled) {
+      const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+      requestAnimationFrame(() =>
+        window.scrollTo({ top: 0, behavior: reduce ? "auto" : "smooth" })
+      );
+    }
   }
 
   /* ==========================================================================
@@ -1142,18 +1725,40 @@
     return 0;
   }
 
+  function normalizeListToken(str) {
+    return String(str || "")
+      .toLowerCase()
+      .replace(/[+·•\-–—]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
   function resolveFromList(raw, list) {
-    if (!raw) return "";
+    if (!raw || !Array.isArray(list)) return "";
     const low = raw.trim().toLowerCase();
     const exact = list.find((item) => item.toLowerCase() === low);
     if (exact) return exact;
+    const normRaw = normalizeListToken(raw);
+    if (normRaw) {
+      const normExact = list.find(
+        (item) => normalizeListToken(item) === normRaw
+      );
+      if (normExact) return normExact;
+      const normPartial = list.find((item) =>
+        normalizeListToken(item).includes(normRaw)
+      );
+      if (normPartial) return normPartial;
+    }
     const partial = list.find((item) => item.toLowerCase().includes(low));
     return partial || "";
   }
 
   function hydrateStateFromUrl() {
     const params = new URLSearchParams(window.location.search);
-    if ([...params.keys()].length === 0) return;
+    if ([...params.keys()].length === 0) {
+      if (el.q) el.q.value = state.query;
+      return;
+    }
 
     const subjParam = params.get("subject");
     if (subjParam) state.subject = resolveSubjectParam(subjParam);
@@ -1174,7 +1779,27 @@
     }
 
     const chParam = params.get("chapter");
-    if (chParam) state.chapterNo = resolveChapterParam(chParam);
+    if (chParam) {
+      state.chapterNo = resolveChapterParam(chParam);
+      if (state.chapterNo > 0) {
+        const ch = state.syllabusByNo.get(state.chapterNo);
+        if (
+          ch &&
+          state.subject !== "All" &&
+          state.subject !== "Saved" &&
+          state.subject !== ch.subject
+        ) {
+          state.subject = ch.subject;
+        }
+        if (state.classLevel !== "all") {
+          const check = filterVideosCustom({
+            chapterNo: state.chapterNo,
+            classLevel: state.classLevel,
+          });
+          if (check.length === 0) state.classLevel = "all";
+        }
+      }
+    }
 
     const langParam = params.get("lang");
     if (langParam && langParam.toLowerCase() !== "all") {
@@ -1182,13 +1807,13 @@
       state.lang = matched || langParam.trim();
     }
 
-    const streamParam = params.get("stream") || params.get("exam");
+    const streamParam = params.get("exam") || params.get("stream");
     if (streamParam && streamParam.toLowerCase() !== "all") {
       const matched = resolveFromList(streamParam, state.allExams);
       state.exam = matched || streamParam.trim();
     }
 
-    const eduParam = params.get("educator");
+    const eduParam = params.get("edu") || params.get("educator");
     if (eduParam) {
       const matched = resolveFromList(eduParam, state.allEducators);
       state.educator = matched || eduParam.trim();
@@ -1212,21 +1837,39 @@
     }
 
     const qParam = params.get("q");
-    if (qParam !== null) {
-      state.query = qParam.trim();
-      if (el.q) el.q.value = state.query;
-    }
+    state.query = qParam !== null ? qParam.trim() : "";
+    if (el.q) el.q.value = state.query;
 
     const roleParam = params.get("role");
     if (roleParam === "student" || roleParam === "teacher") {
       state.userRole = roleParam;
       state.compassCollapsed = roleParam === "teacher";
     }
+
+    const pickParam = params.get("pick");
+    if (pickParam) {
+      state.pickIds = pickParam
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean)
+        .slice(0, 20);
+    } else {
+      state.pickIds = [];
+    }
   }
 
   function buildDeepLinkUrl(overrides = {}) {
     const base = `${window.location.origin}${window.location.pathname}`;
     const params = new URLSearchParams();
+    const pickIds = overrides.pickIds ?? state.pickIds;
+
+    if (Array.isArray(pickIds) && pickIds.length > 0) {
+      params.set("pick", pickIds.join(","));
+      const roleVal = overrides.role ?? state.userRole;
+      if (roleVal === "teacher") params.set("role", "teacher");
+      return `${base}?${params.toString()}`;
+    }
+
     const subj = overrides.subject ?? state.subject;
     const cls = overrides.classLevel ?? state.classLevel;
     const chNo = overrides.chapterNo ?? state.chapterNo;
@@ -1235,15 +1878,17 @@
     const edu = overrides.educator ?? state.educator;
     const sortKey = overrides.sort ?? state.sort;
     const qText = overrides.query ?? state.query;
+    const roleVal = overrides.role ?? state.userRole;
 
     if (subj && subj !== "All" && subj !== "Saved") params.set("subject", subj);
     if (cls && cls !== "all") params.set("class", cls);
     if (chNo > 0) params.set("chapter", String(chNo));
     if (lang && lang !== "all") params.set("lang", lang);
-    if (exam && exam !== "all") params.set("stream", exam);
-    if (edu) params.set("educator", edu);
+    if (exam && exam !== "all") params.set("exam", exam);
+    if (edu) params.set("edu", edu);
     if (sortKey && sortKey !== "trending") params.set("sort", sortKey);
     if (qText) params.set("q", qText);
+    if (roleVal === "teacher") params.set("role", "teacher");
 
     const qs = params.toString();
     return qs ? `${base}?${qs}` : base;
@@ -1251,14 +1896,18 @@
 
   function syncUrlAndTitle() {
     const params = new URLSearchParams();
-    if (state.subject !== "All") params.set("subject", state.subject);
-    if (state.classLevel !== "all") params.set("class", state.classLevel);
-    if (state.chapterNo > 0) params.set("chapter", String(state.chapterNo));
-    if (state.lang !== "all") params.set("lang", state.lang);
-    if (state.exam !== "all") params.set("stream", state.exam);
-    if (state.educator) params.set("educator", state.educator);
-    if (state.sort !== "trending") params.set("sort", state.sort);
-    if (state.query) params.set("q", state.query);
+    if (state.pickIds.length > 0) {
+      params.set("pick", state.pickIds.join(","));
+    } else {
+      if (state.subject !== "All") params.set("subject", state.subject);
+      if (state.classLevel !== "all") params.set("class", state.classLevel);
+      if (state.chapterNo > 0) params.set("chapter", String(state.chapterNo));
+      if (state.lang !== "all") params.set("lang", state.lang);
+      if (state.exam !== "all") params.set("exam", state.exam);
+      if (state.educator) params.set("edu", state.educator);
+      if (state.sort !== "trending") params.set("sort", state.sort);
+      if (state.query) params.set("q", state.query);
+    }
     if (state.userRole === "teacher") params.set("role", "teacher");
 
     const qs = params.toString();
@@ -1268,14 +1917,17 @@
     } catch {}
 
     const titleParts = [];
-    if (state.chapterNo) {
+    const chWord = CFG.platformId === "olympiad" ? "Mod" : "Ch";
+    if (state.pickIds.length > 0) {
+      titleParts.push(`Classroom Assignment (${state.pickIds.length} Lectures)`);
+    } else if (state.chapterNo) {
       const ch = state.syllabusByNo.get(state.chapterNo);
-      if (ch) titleParts.push(`Ch ${pad2(ch.chapter_no)} ${ch.chapter}`);
+      if (ch) titleParts.push(`${chWord} ${pad2(ch.chapter_no)} ${ch.chapter}`);
     } else if (state.subject !== "All") {
       titleParts.push(state.subject);
     }
-    if (state.educator) titleParts.push(state.educator);
-    if (state.lang !== "all") titleParts.push(state.lang);
+    if (state.educator && !state.pickIds.length) titleParts.push(state.educator);
+    if (state.lang !== "all" && !state.pickIds.length) titleParts.push(state.lang);
 
     document.title = titleParts.length
       ? `${titleParts.join(" · ")} | ${CFG.brandName}`
@@ -1285,31 +1937,85 @@
   /* ==========================================================================
      WHATSAPP HOMEWORK & STUDY TARGET DEEP-LINK SHARE
      ========================================================================== */
+  function buildHomeworkPackSharePayload(customIds = null) {
+    const ids = Array.isArray(customIds) && customIds.length
+      ? customIds
+      : state.pickIds.length
+        ? state.pickIds
+        : state.homeworkPack;
+    const videos = resolvePickIdsToVideos(ids);
+    const shareUrl = buildDeepLinkUrl({
+      pickIds: videos.map(getVideoPickId),
+      role: "student",
+    });
+    const chPrefix = CFG.platformId === "olympiad" ? "Mod" : "Ch";
+    const lines = videos.map((v, i) => {
+      const creator = v.educator || v.channel || CFG.brandName;
+      return `${i + 1}. [${chPrefix} ${pad2(v.chapter_no)}] ${v.title} — ${creator}`;
+    });
+    const text = `📋 *${CFG.brandName} Classroom Homework Assignment (${videos.length} Lectures)*\n${lines.join("\n")}\n\n🔗 Open Curated Pack (1-Tap): ${shareUrl}`;
+    return { text, url: shareUrl, count: videos.length };
+  }
+
   function buildCurrentViewSharePayload(overrideChapterNo = 0) {
+    if (!overrideChapterNo && state.pickIds.length > 0) {
+      return buildHomeworkPackSharePayload(state.pickIds);
+    }
+
     const targetChNo = overrideChapterNo || state.chapterNo;
     const chObj = targetChNo > 0 ? state.syllabusByNo.get(targetChNo) : null;
-    const shareUrl = buildDeepLinkUrl({
-      subject: chObj ? chObj.subject : state.subject,
-      chapterNo: targetChNo,
-      lang: state.lang,
-    });
+    const shareOverrides = overrideChapterNo
+      ? {
+          subject: chObj ? chObj.subject : state.subject,
+          classLevel: "all",
+          chapterNo: overrideChapterNo,
+          lang: state.lang,
+          exam: state.exam,
+          educator: "",
+          sort: state.sort,
+          query: "",
+          pickIds: [],
+        }
+      : {
+          subject: state.subject,
+          classLevel: state.classLevel,
+          chapterNo: state.chapterNo,
+          lang: state.lang,
+          exam: state.exam,
+          educator: state.educator,
+          sort: state.sort,
+          query: state.query,
+          role: state.userRole,
+          pickIds: [],
+        };
+    const shareUrl = buildDeepLinkUrl(shareOverrides);
 
+    const chPrefix = CFG.platformId === "olympiad" ? "Mod" : "Ch";
     const parts = [CFG.brandName];
     if (chObj) {
       const ped = getChapterPedagogy(chObj.chapter_no);
       const hiShort = shortHindiLabel(ped.hi);
       parts.push(
-        `Ch ${pad2(chObj.chapter_no)} ${chObj.chapter}${hiShort ? ` (${hiShort})` : ""}`
+        `${chPrefix} ${pad2(chObj.chapter_no)} ${chObj.chapter}${hiShort ? ` (${hiShort})` : ""}`
       );
     } else {
       if (state.subject !== "All") parts.push(state.subject);
       if (state.classLevel !== "all") parts.push(state.classLevel);
     }
-    if (state.educator) parts.push(`by ${state.educator}`);
+    if (shareOverrides.exam && shareOverrides.exam !== "all") {
+      parts.push(shareOverrides.exam);
+    }
+    if (shareOverrides.educator) parts.push(`by ${shareOverrides.educator}`);
     if (state.lang !== "all") parts.push(getLangMeta(state.lang).badge);
 
     const count = overrideChapterNo
-      ? filterVideosCustom({ chapterNo: overrideChapterNo }).length
+      ? filterVideosCustom({
+          subject: chObj ? chObj.subject : state.subject,
+          classLevel: "all",
+          chapterNo: overrideChapterNo,
+          educator: "",
+          query: "",
+        }).length
       : getFilteredVideos().length;
 
     const text = `📚 ${parts.join(" · ")} (${count.toLocaleString()} Verified Lectures)\n🔗 Study Roadmap: ${shareUrl}`;
@@ -1319,6 +2025,7 @@
   function buildVideoShareText(v) {
     const creator = v.educator || v.channel || CFG.brandName;
     const lang = v.language ? getLangMeta(v.language).badge : "Hinglish";
+    const chPrefix = CFG.platformId === "olympiad" ? "Mod" : "Ch";
     const deepUrl = buildDeepLinkUrl({
       subject: v.subject,
       chapterNo: v.chapter_no,
@@ -1327,8 +2034,10 @@
       educator: "",
       query: "",
       sort: "trending",
+      role: "student",
+      pickIds: [],
     });
-    return `📚 [Ch ${pad2(v.chapter_no)} · ${v.chapter}] ${v._vibe.label}\n▶ ${v.title} — ${creator} (${lang})\n🎬 Watch: ${v.url}\n🧭 Chapter Roadmap: ${deepUrl}`;
+    return `📚 [${chPrefix} ${pad2(v.chapter_no)} · ${v.chapter}] ${v._vibe.label}\n▶ ${v.title} — ${creator} (${lang})\n🎬 Watch: ${v.url}\n🧭 Chapter Roadmap: ${deepUrl}`;
   }
 
   async function copyToClipboard(str) {
@@ -1382,7 +2091,7 @@
   function renderVisualCompass() {
     if (!el.visualCompass) return;
 
-    if (state.userRole === "teacher") {
+    if (state.userRole === "teacher" || state.pickIds.length > 0) {
       el.visualCompass.hidden = true;
       return;
     }
@@ -1444,10 +2153,13 @@
         const c = counts.get(lg) || 0;
         const btn = document.createElement("button");
         btn.type = "button";
-        btn.className = "compass-lang-pill";
-        btn.dataset.lang = lg;
         const active = state.lang === lg;
+        btn.className = `compass-lang-pill${c === 0 && !active ? " is-zero" : ""}`;
+        btn.dataset.lang = lg;
         btn.setAttribute("aria-pressed", active ? "true" : "false");
+        if (c === 0) {
+          btn.title = `0 direct matches for current filter — tap to browse available ${lg} chapters`;
+        }
 
         const lbl = document.createElement("span");
         lbl.textContent = meta.pill;
@@ -1463,6 +2175,67 @@
           renderAll({ announce: true });
         });
         el.compassLangs.appendChild(btn);
+      }
+    }
+
+    // TAP 1B: 1-Tap Exam / Contest / Board Stream Pills
+    if (el.compassExams) {
+      el.compassExams.replaceChildren();
+      if (el.compassExamBadge) {
+        el.compassExamBadge.textContent =
+          CFG.platformId === "olympiad"
+            ? "Contest Track"
+            : CFG.platformId === "board" || CFG.platformId === "upboard"
+              ? "Board Stream"
+              : "Exam Track";
+      }
+      const exPool = filterVideosCustom({ exam: "all" });
+      const exCounts = new Map();
+      for (const v of exPool) {
+        if (v.target_exam) {
+          exCounts.set(v.target_exam, (exCounts.get(v.target_exam) || 0) + 1);
+        }
+      }
+
+      const allExBtn = document.createElement("button");
+      allExBtn.type = "button";
+      allExBtn.className = "compass-lang-pill";
+      allExBtn.setAttribute("aria-pressed", state.exam === "all" ? "true" : "false");
+      allExBtn.textContent = "🎓 All ";
+      const allExCnt = document.createElement("span");
+      allExCnt.className = "compass-lang-cnt";
+      allExCnt.textContent = String(exPool.length);
+      allExBtn.appendChild(allExCnt);
+      allExBtn.addEventListener("click", () => {
+        state.exam = "all";
+        state.flatLimit = FLAT_PAGE_SIZE;
+        renderAll({ announce: true });
+      });
+      el.compassExams.appendChild(allExBtn);
+
+      for (const ex of state.allExams) {
+        const ec = exCounts.get(ex) || 0;
+        const active = state.exam === ex;
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = `compass-lang-pill${ec === 0 && !active ? " is-zero" : ""}`;
+        btn.dataset.exam = ex;
+        btn.setAttribute("aria-pressed", active ? "true" : "false");
+
+        const lbl = document.createElement("span");
+        lbl.textContent = ex;
+
+        const cnt = document.createElement("span");
+        cnt.className = "compass-lang-cnt";
+        cnt.textContent = String(ec);
+
+        btn.append(lbl, cnt);
+        btn.addEventListener("click", () => {
+          state.exam = state.exam === ex ? "all" : ex;
+          state.flatLimit = FLAT_PAGE_SIZE;
+          renderAll({ announce: true });
+        });
+        el.compassExams.appendChild(btn);
       }
     }
 
@@ -1521,14 +2294,24 @@
       return true;
     });
 
-    if (el.compassChapterSelect) {
-      el.compassChapterSelect.replaceChildren();
-      const defOpt = document.createElement("option");
-      defOpt.value = "0";
-      const chWord = CFG.platformId === "olympiad" ? "Module" : "Chapter";
-      defOpt.textContent = `📖 All ${candidateChapters.length} ${chWord}s — Pick Ch 01, Ch 02 (English + हिंदी)`;
-      el.compassChapterSelect.appendChild(defOpt);
+    const step3Badge = el.visualCompass?.querySelector(
+      ".compass-step3-bar .compass-step-badge"
+    );
+    if (step3Badge) {
+      step3Badge.textContent = IS_OLYMPIAD
+        ? "Tap 3 · Pick Contest Module"
+        : "Tap 3 · Pick Textbook Chapter";
+    }
 
+    if (el.compassChapterSelect) {
+      const chRows = [
+        [
+          "0",
+          IS_OLYMPIAD
+            ? `📖 All ${candidateChapters.length} Modules — Pick Mod 01, Mod 02 (English + हिंदी)`
+            : `📖 All ${candidateChapters.length} Chapters — Pick Ch 01, Ch 02 (English + हिंदी)`,
+        ],
+      ];
       for (const ch of candidateChapters) {
         const ped = getChapterPedagogy(ch.chapter_no);
         const roi = getRoiMeta(ped.roi);
@@ -1539,12 +2322,12 @@
             ? "🟢 "
             : "";
         const cnt = chCounts.get(ch.chapter_no) || 0;
-        const opt = document.createElement("option");
-        opt.value = String(ch.chapter_no);
-        opt.textContent = `${doneMark}Ch ${pad2(ch.chapter_no)} · ${ch.chapter}${hiShort && hiShort !== ch.chapter ? ` — ${hiShort}` : ""} (${cnt})`;
-        el.compassChapterSelect.appendChild(opt);
+        chRows.push([
+          String(ch.chapter_no),
+          `${doneMark}${UNIT_SHORT} ${pad2(ch.chapter_no)} · ${ch.chapter}${hiShort && hiShort !== ch.chapter ? ` — ${hiShort}` : ""} (${cnt})`,
+        ]);
       }
-      el.compassChapterSelect.value = String(state.chapterNo || 0);
+      setSelectOptions(el.compassChapterSelect, chRows, state.chapterNo || 0);
       el.compassChapterSelect.classList.toggle(
         "is-filtered",
         state.chapterNo > 0
@@ -1590,8 +2373,8 @@
           ch.chapter.length > 24 ? `${ch.chapter.slice(0, 22)}…` : ch.chapter;
         chip.textContent =
           hiShort && hiShort !== ch.chapter
-            ? `Ch ${pad2(ch.chapter_no)} · ${shortEng} (${hiShort})`
-            : `Ch ${pad2(ch.chapter_no)} · ${shortEng}`;
+            ? `${UNIT_SHORT} ${pad2(ch.chapter_no)} · ${shortEng} (${hiShort})`
+            : `${UNIT_SHORT} ${pad2(ch.chapter_no)} · ${shortEng}`;
         chip.addEventListener("click", () => {
           jumpToChapter(isCurrent ? 0 : ch.chapter_no);
         });
@@ -1618,8 +2401,10 @@
         CFG.platformId === "neet"
           ? ["Anuvanshikta", "DNA", "Koshika", "Bijli", "Prakash", "Carbon", "12th Physics Ch 1"]
           : CFG.platformId === "olympiad"
-            ? ["Trikonmiti", "Prayikta", "Ch 1", "Number Theory", "Combinatorics"]
-            : ["Samakalan", "Avkalan", "Trikonmiti", "Bijli", "Prakash", "Carbon", "12th Physics Ch 1"];
+            ? ["Number Theory", "Combinatorics", "IOQM", "Trikonmiti", "Mod 1", "NSEP"]
+            : CFG.platformId === "upboard"
+              ? ["समाकलन", "विद्युत धारा", "कार्बनिक रसायन", "त्रिकोणमिति", "12वीं भौतिकी अध्याय 1"]
+              : ["Samakalan", "Avkalan", "Trikonmiti", "Bijli", "Prakash", "Carbon", "12th Physics Ch 1"];
 
       for (const word of sampleChips) {
         const b = document.createElement("button");
@@ -1657,7 +2442,7 @@
       st,
       document.createTextNode(
         plan.suggestedChapters.length
-          ? " — Open 1 → 2 → 3 Chapter Roadmap:"
+          ? ` — Open 1 → 2 → 3 ${UNIT_SINGULAR} Roadmap:`
           : ""
       )
     );
@@ -1667,7 +2452,7 @@
       const btn = document.createElement("button");
       btn.type = "button";
       btn.className = "phonetic-jump-btn";
-      btn.textContent = `📖 Ch ${pad2(ch.chapter_no)}: ${ch.chapter}`;
+      btn.textContent = `📖 ${UNIT_SHORT} ${pad2(ch.chapter_no)}: ${ch.chapter}`;
       btn.addEventListener("click", () => {
         state.query = "";
         if (el.q) el.q.value = "";
@@ -1679,11 +2464,268 @@
   }
 
   /* ==========================================================================
-     THE "1 -> 2 -> 3 CHAPTER ROADMAP" & PREREQUISITE BRIDGE
+     STUDIO v5.0: RESUME LAST LECTURE BAR, ASSIGNED PACK & HOMEWORK TRAY
+     ========================================================================== */
+  function resolveLastLectureVideo() {
+    const last = state.lastLecture;
+    if (!last || typeof last !== "object") return null;
+    return (
+      state.videos.find(
+        (v) =>
+          (last.key && v._key === last.key) ||
+          (last.video_id && String(v.video_id) === String(last.video_id))
+      ) || null
+    );
+  }
+
+  function renderContinueStudyBar() {
+    if (!el.continueStudyBar) return;
+    const lastVideo = resolveLastLectureVideo();
+    if (
+      !lastVideo ||
+      state.continueDismissed ||
+      state.userRole !== "student" ||
+      state.pickIds.length > 0
+    ) {
+      el.continueStudyBar.hidden = true;
+      return;
+    }
+
+    el.continueStudyBar.hidden = false;
+    if (el.continueStudyText) {
+      el.continueStudyText.textContent = `Continue: ${UNIT_SHORT} ${pad2(lastVideo.chapter_no)} · ${lastVideo.title}`;
+    }
+    if (el.continueChText) {
+      el.continueChText.textContent = `🧭 ${UNIT_SHORT} ${pad2(lastVideo.chapter_no)} Roadmap`;
+    }
+
+    if (el.studyStreakPill) {
+      const streak = computeStudyStreak();
+      const doneCnt = state.doneVideos.size;
+      if (streak >= 1 || doneCnt >= 1) {
+        el.studyStreakPill.hidden = false;
+        el.studyStreakPill.textContent =
+          streak >= 1
+            ? `🔥 ${streak}d Streak · ${doneCnt} Done`
+            : `✅ ${doneCnt} Done`;
+      } else {
+        el.studyStreakPill.hidden = true;
+      }
+    }
+  }
+
+  function renderAssignedPackSection() {
+    if (!el.assignedPackSection) return false;
+    if (!state.pickIds.length) {
+      el.assignedPackSection.hidden = true;
+      el.assignedPackSection.replaceChildren();
+      return false;
+    }
+
+    el.assignedPackSection.hidden = false;
+    el.assignedPackSection.replaceChildren();
+
+    const packVideos = resolvePickIdsToVideos(state.pickIds);
+    const head = document.createElement("div");
+    head.className = "assigned-pack-head";
+
+    const titleCol = document.createElement("div");
+    titleCol.className = "assigned-pack-title-col";
+
+    const kicker = document.createElement("span");
+    kicker.className = "assigned-pack-kicker";
+    kicker.textContent = "📋 Classroom Homework Assignment";
+
+    const h2 = document.createElement("h2");
+    h2.id = "assigned-pack-heading";
+    h2.className = "assigned-pack-h2";
+
+    const sub = document.createElement("p");
+    sub.className = "assigned-pack-sub";
+
+    if (!packVideos.length) {
+      h2.textContent = "Assigned Pack Not Found in This Catalog";
+      sub.textContent =
+        "None of the lecture IDs in this ?pick= link matched this platform's verified video dataset.";
+      titleCol.append(kicker, h2, sub);
+
+      const exitBtn = document.createElement("button");
+      exitBtn.type = "button";
+      exitBtn.className = "hw-btn is-primary";
+      exitBtn.textContent = "Browse All Verified Lectures";
+      exitBtn.addEventListener("click", () => {
+        state.pickIds = [];
+        renderAll({ announce: true });
+      });
+
+      const actCol = document.createElement("div");
+      actCol.className = "assigned-pack-actions";
+      actCol.appendChild(exitBtn);
+      head.append(titleCol, actCol);
+      el.assignedPackSection.appendChild(head);
+      return false;
+    }
+
+    const chNames = Array.from(
+      new Set(
+        packVideos.map((v) => `${UNIT_SHORT} ${pad2(v.chapter_no)} ${v.chapter}`)
+      )
+    );
+    h2.textContent = `Assigned Study Pack (${packVideos.length} Curated Lecture${packVideos.length === 1 ? "" : "s"})`;
+    sub.textContent = `Work through these lectures in numbered order · Covers: ${chNames.slice(0, 4).join(" · ")}${chNames.length > 4 ? ` +${chNames.length - 4} more` : ""}`;
+    titleCol.append(kicker, h2, sub);
+
+    const actions = document.createElement("div");
+    actions.className = "assigned-pack-actions";
+
+    const startBtn = document.createElement("button");
+    startBtn.type = "button";
+    startBtn.className = "hw-btn is-primary";
+    startBtn.textContent = "▶ Start Lecture #1";
+    startBtn.addEventListener("click", () => openPlayer(packVideos[0]));
+
+    const waBtn = document.createElement("button");
+    waBtn.type = "button";
+    waBtn.className = "hw-btn is-wa";
+    waBtn.textContent = "📲 Share Pack on WhatsApp";
+    waBtn.addEventListener("click", async () => {
+      const payload = buildHomeworkPackSharePayload(state.pickIds);
+      await copyToClipboard(payload.text);
+      showShareToast("✓ Classroom Assignment copied! Opening WhatsApp…", payload.text);
+      window.open(
+        `https://wa.me/?text=${encodeURIComponent(payload.text)}`,
+        "_blank",
+        "noopener,noreferrer"
+      );
+    });
+
+    const copyBtn = document.createElement("button");
+    copyBtn.type = "button";
+    copyBtn.className = "hw-btn";
+    copyBtn.textContent = "🔗 Copy Pack Link";
+    copyBtn.addEventListener("click", async () => {
+      const payload = buildHomeworkPackSharePayload(state.pickIds);
+      await copyToClipboard(payload.url);
+      showShareToast("✓ Direct assignment link (?pick=…) copied!", payload.text);
+    });
+
+    const exitBtn = document.createElement("button");
+    exitBtn.type = "button";
+    exitBtn.className = "hw-btn";
+    exitBtn.textContent = "✕ Exit Pack · All Lectures";
+    exitBtn.addEventListener("click", () => {
+      state.pickIds = [];
+      renderAll({ announce: true });
+    });
+
+    actions.append(startBtn, waBtn, copyBtn, exitBtn);
+    head.append(titleCol, actions);
+    el.assignedPackSection.appendChild(head);
+
+    const doneInPack = packVideos.filter((v) =>
+      state.doneVideos.has(v._key)
+    ).length;
+    const progRow = document.createElement("div");
+    progRow.className = "assigned-pack-progress-row";
+    const progTxt = document.createElement("span");
+    progTxt.textContent = `✅ ${doneInPack} / ${packVideos.length} Assigned Lectures Completed`;
+    const progBar = document.createElement("progress");
+    progBar.max = packVideos.length;
+    progBar.value = doneInPack;
+    progBar.setAttribute(
+      "aria-label",
+      `${doneInPack} of ${packVideos.length} assigned lectures completed`
+    );
+    progRow.append(progTxt, progBar);
+    el.assignedPackSection.appendChild(progRow);
+
+    const grid = document.createElement("div");
+    grid.className = "cards-grid";
+    packVideos.forEach((v, idx) => {
+      grid.appendChild(
+        createVideoCard(v, {
+          assignIndex: idx + 1,
+          highPriority: idx < 2,
+          lazyImage: idx >= 6,
+        })
+      );
+    });
+    el.assignedPackSection.appendChild(grid);
+    return true;
+  }
+
+  function renderHomeworkTray() {
+    const packVideos = resolvePickIdsToVideos(state.homeworkPack);
+    if (el.cntPack) el.cntPack.textContent = String(packVideos.length);
+    if (el.homeworkPackBtn) {
+      el.homeworkPackBtn.setAttribute(
+        "aria-pressed",
+        state.homeworkTrayOpen ? "true" : "false"
+      );
+      el.homeworkPackBtn.classList.toggle("has-items", packVideos.length > 0);
+    }
+
+    if (!el.homeworkTray) return;
+    if (!state.homeworkTrayOpen) {
+      el.homeworkTray.hidden = true;
+      return;
+    }
+
+    el.homeworkTray.hidden = false;
+    if (el.hwTrayTitle) {
+      el.hwTrayTitle.textContent = `📋 Classroom Homework Pack (${packVideos.length})`;
+    }
+    if (el.hwTrayHint) {
+      el.hwTrayHint.textContent = packVideos.length
+        ? "Share 1 custom ?pick= link or formatted WhatsApp assignment with your students:"
+        : "Tap “📋 Assign” on 2–8 lecture cards across chapters to build a custom Classroom Pack.";
+    }
+
+    if (el.hwTrayChips) {
+      el.hwTrayChips.replaceChildren();
+      packVideos.forEach((v, idx) => {
+        const chip = document.createElement("span");
+        chip.className = "hw-chip";
+
+        const txt = document.createElement("span");
+        txt.className = "hw-chip-txt";
+        txt.textContent = `${idx + 1}. ${UNIT_SHORT} ${pad2(v.chapter_no)} · ${v.title}`;
+
+        const rm = document.createElement("button");
+        rm.type = "button";
+        rm.className = "hw-chip-rm";
+        rm.textContent = "✕";
+        rm.setAttribute(
+          "aria-label",
+          `Remove from Homework Pack: ${v.title}`
+        );
+        rm.addEventListener("click", () => {
+          toggleHomeworkPack(v);
+          renderAll({ announce: false });
+        });
+
+        chip.append(txt, rm);
+        el.hwTrayChips.appendChild(chip);
+      });
+    }
+
+    const empty = packVideos.length === 0;
+    if (el.hwWhatsappBtn) el.hwWhatsappBtn.disabled = empty;
+    if (el.hwCopyBtn) el.hwCopyBtn.disabled = empty;
+    if (el.hwPreviewBtn) el.hwPreviewBtn.disabled = empty;
+    if (el.hwClearBtn) el.hwClearBtn.disabled = empty;
+  }
+
+  /* ==========================================================================
+     THE "1 -> 2 -> 3 CHAPTER ROADMAP", CHEAT-SHEET & PREREQUISITE BRIDGE
      ========================================================================== */
   function renderChapterRoadmap() {
     if (!el.chapterRoadmap) return;
-    if (!state.chapterNo || !state.syllabusByNo.has(state.chapterNo)) {
+    if (
+      state.pickIds.length > 0 ||
+      !state.chapterNo ||
+      !state.syllabusByNo.has(state.chapterNo)
+    ) {
       el.chapterRoadmap.hidden = true;
       el.chapterRoadmap.replaceChildren();
       return;
@@ -1697,7 +2739,7 @@
     el.chapterRoadmap.hidden = false;
     el.chapterRoadmap.replaceChildren();
 
-    // 1. Top Header: Chapter Tag + NCERT Ref + Exam Weightage/ROI Badge + Done & WhatsApp Actions
+    // 1. Top Header: Chapter Tag + NCERT Ref + ROI Badge + Est Hours + Done & WhatsApp Actions
     const top = document.createElement("div");
     top.className = "roadmap-top";
 
@@ -1710,13 +2752,17 @@
     const chTag = document.createElement("span");
     chTag.className = "roadmap-ch-tag";
     const shortSubj = CFG.subjectMeta[chMeta.subject]?.short || chMeta.subject;
-    chTag.textContent = `Ch ${pad2(chMeta.chapter_no)} · ${shortSubj} · ${ped.ref}`;
+    chTag.textContent = `${UNIT_SHORT} ${pad2(chMeta.chapter_no)} · ${shortSubj} · ${ped.ref}`;
 
     const roiSpan = document.createElement("span");
     roiSpan.className = `roi-badge ${roi.cls}`;
     roiSpan.textContent = roi.label;
 
-    badgesRow.append(chTag, roiSpan);
+    const hrsSpan = document.createElement("span");
+    hrsSpan.className = "est-hours-badge";
+    hrsSpan.textContent = `⏱ ~${ped.est_hours}h Mastery`;
+
+    badgesRow.append(chTag, roiSpan, hrsSpan);
 
     const h2 = document.createElement("h2");
     h2.className = "roadmap-h2";
@@ -1748,12 +2794,12 @@
     const waBtn = document.createElement("button");
     waBtn.type = "button";
     waBtn.className = "roadmap-wa-btn";
-    waBtn.textContent = "📲 WhatsApp Chapter";
+    waBtn.textContent = `📲 WhatsApp ${UNIT_SINGULAR}`;
     waBtn.addEventListener("click", async () => {
       const payload = buildCurrentViewSharePayload(chMeta.chapter_no);
       await copyToClipboard(payload.text);
       showShareToast(
-        `✓ Ch ${pad2(chMeta.chapter_no)} study roadmap link copied!`,
+        `✓ ${UNIT_SHORT} ${pad2(chMeta.chapter_no)} study roadmap link copied!`,
         payload.text
       );
     });
@@ -1779,18 +2825,139 @@
       const jumpBtn = document.createElement("button");
       jumpBtn.type = "button";
       jumpBtn.className = "roadmap-prereq-btn";
-      jumpBtn.textContent = `🔗 Review Ch ${pad2(prereqCh.chapter_no)}: ${prereqCh.chapter} →`;
+      jumpBtn.textContent = `🔗 Review ${UNIT_SHORT} ${pad2(prereqCh.chapter_no)}: ${prereqCh.chapter} →`;
       jumpBtn.addEventListener("click", () => {
         jumpToChapter(prereqCh.chapter_no);
       });
       bridge.appendChild(jumpBtn);
     } else {
       const bStrong = document.createElement("strong");
-      bStrong.textContent = "🌱 Starter Chapter (Zero Prerequisites): ";
+      bStrong.textContent = `🌱 Starter ${UNIT_SINGULAR} (Zero Prerequisites): `;
       bridgeTxt.append(bStrong, document.createTextNode(ped.tip));
       bridge.appendChild(bridgeTxt);
     }
     el.chapterRoadmap.appendChild(bridge);
+
+    // 2B. Interactive Quick Concept Sheet, #1 Exam Trap & 3-Point Mastery Self-Check
+    const chKey = String(chMeta.chapter_no);
+    const savedChecks = Array.isArray(state.selfCheck[chKey])
+      ? state.selfCheck[chKey]
+      : [];
+    const checkItems = Array.isArray(ped.check) ? ped.check.slice(0, 3) : [];
+    const checkedCount = checkItems.filter((_, idx) =>
+      Boolean(savedChecks[idx])
+    ).length;
+
+    const sheet = document.createElement("details");
+    sheet.className = "roadmap-cheatsheet";
+    sheet.open = state.cheatsheetOpen !== false;
+    sheet.addEventListener("toggle", () => {
+      state.cheatsheetOpen = sheet.open;
+    });
+
+    const summary = document.createElement("summary");
+    summary.className = "roadmap-cheatsheet-summary";
+
+    const sumTitle = document.createElement("span");
+    sumTitle.textContent =
+      "📘 Quick Concept Sheet, #1 Exam Trap & 3-Point Mastery Self-Check";
+
+    const sumMeta = document.createElement("span");
+    sumMeta.className = "cheatsheet-summary-meta";
+    sumMeta.textContent = `✅ ${checkedCount}/${checkItems.length} Checkpoints · ~${ped.est_hours}h`;
+
+    summary.append(sumTitle, sumMeta);
+    sheet.appendChild(summary);
+
+    const sheetBody = document.createElement("div");
+    sheetBody.className = "roadmap-cheatsheet-body";
+
+    // Card 1: Must-Know Concepts & Formulas
+    const mustCard = document.createElement("div");
+    mustCard.className = "cheatsheet-card";
+    const mustLbl = document.createElement("span");
+    mustLbl.className = "cheatsheet-card-label";
+    mustLbl.textContent = "🔑 Must-Know Concepts & Formulas";
+    const mustUl = document.createElement("ul");
+    mustUl.className = "must-know-list";
+    for (const item of ped.must_know) {
+      const li = document.createElement("li");
+      li.textContent = item;
+      mustUl.appendChild(li);
+    }
+    mustCard.append(mustLbl, mustUl);
+
+    // Card 2: #1 Exam Trap Alert
+    const trapCard = document.createElement("div");
+    trapCard.className = "cheatsheet-card trap-callout";
+    const trapLbl = document.createElement("span");
+    trapLbl.className = "cheatsheet-card-label";
+    trapLbl.textContent = "⚠️ #1 Exam Trap Alert";
+    const trapP = document.createElement("p");
+    trapP.className = "trap-text";
+    trapP.textContent = ped.trap;
+    trapCard.append(trapLbl, trapP);
+
+    // Card 3: 3-Point Mastery Self-Check (<fieldset> + <legend>)
+    const checkFieldset = document.createElement("fieldset");
+    checkFieldset.className = "self-check-fieldset";
+    const legend = document.createElement("legend");
+    legend.className = "self-check-legend";
+    legend.textContent = `✅ 3-Point Mastery Self-Check (${checkedCount}/${checkItems.length})`;
+    checkFieldset.appendChild(legend);
+
+    checkItems.forEach((promptTxt, idx) => {
+      const cbId = `sc-${chMeta.chapter_no}-${idx}`;
+      const isChecked = Boolean(savedChecks[idx]);
+      const lbl = document.createElement("label");
+      lbl.className = `self-check-item${isChecked ? " is-checked" : ""}`;
+      lbl.htmlFor = cbId;
+
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.id = cbId;
+      cb.checked = isChecked;
+
+      const txtSpan = document.createElement("span");
+      txtSpan.textContent = promptTxt;
+
+      cb.addEventListener("change", () => {
+        const currentArr = Array.isArray(state.selfCheck[chKey])
+          ? state.selfCheck[chKey].slice(0, checkItems.length)
+          : new Array(checkItems.length).fill(false);
+        while (currentArr.length < checkItems.length) currentArr.push(false);
+        currentArr[idx] = cb.checked;
+        state.selfCheck[chKey] = currentArr;
+        saveJson(SELF_CHECK_KEY, state.selfCheck);
+
+        const nowTotal = currentArr.filter(Boolean).length;
+        if (cb.checked) recordStudyActivity();
+        if (nowTotal === checkItems.length && !state.doneChapters.has(chKey)) {
+          state.doneChapters.add(chKey);
+          saveSet(DONE_KEY, state.doneChapters);
+          showShareToast(
+            `🎉 All 3 checkpoints mastered! ${UNIT_SHORT} ${pad2(chMeta.chapter_no)} marked Completed.`,
+            "",
+            true
+          );
+        }
+        renderAll({ announce: false });
+      });
+
+      lbl.append(cb, txtSpan);
+      checkFieldset.appendChild(lbl);
+    });
+
+    if (checkedCount === checkItems.length && checkItems.length > 0) {
+      const completeNote = document.createElement("p");
+      completeNote.className = "self-check-complete-note";
+      completeNote.textContent = "🎉 All 3 mastery checkpoints verified!";
+      checkFieldset.appendChild(completeNote);
+    }
+
+    sheetBody.append(mustCard, trapCard, checkFieldset);
+    sheet.appendChild(sheetBody);
+    el.chapterRoadmap.appendChild(sheet);
 
     // 3. Guided 3-Step Video Sequence ("Where Should I Click First?")
     const langPool = state.videos
@@ -1924,11 +3091,39 @@
     if (el.brandName) el.brandName.textContent = CFG.brandName;
     if (el.q) {
       el.q.placeholder =
-        CFG.platformId === "neet"
-          ? "Type or 🎤 speak: Anuvanshikta, DNA, Bijli, Ch 1…"
-          : CFG.platformId === "olympiad"
-            ? "Type or 🎤 speak: Trikonmiti, Prayikta, Ch 1, IOQM…"
-            : "Type or 🎤 speak: Samakalan, Bijli, Ch 1, Om Sharma…";
+        CFG.searchPlaceholder ||
+        "Type or 🎤 speak chapter, topic, language, or educator…";
+    }
+
+    const chFilterPlaceholder =
+      CFG.platformId === "olympiad"
+        ? "Find Mod 01, Number Theory, Combinatorics, IOQM…"
+        : CFG.platformId === "neet"
+          ? "Find Ch 01, Genetics, DNA, Anuvanshikta, Koshika…"
+          : CFG.platformId === "board"
+            ? "Find Ch 01, Calculus, Electricity, Life Processes…"
+            : CFG.platformId === "upboard"
+              ? "अध्याय खोजें: Ch 01, समाकलन, विद्युत, कार्बन…"
+              : "Find Ch 01, Samakalan, Bijli, GOC…";
+
+    if (el.chFilter) el.chFilter.placeholder = chFilterPlaceholder;
+    if (el.drawerChFilter) el.drawerChFilter.placeholder = chFilterPlaceholder;
+    if (el.clearChapterBtn) {
+      el.clearChapterBtn.textContent = `All ${UNIT_PLURAL.toLowerCase()}`;
+    }
+    if (el.drawerAllChBtn) {
+      el.drawerAllChBtn.textContent = `All ${UNIT_PLURAL}`;
+    }
+    if (el.drawerTitle) {
+      el.drawerTitle.textContent = IS_OLYMPIAD
+        ? "📚 Pick Olympiad Module"
+        : "📚 Pick Textbook Chapter";
+    }
+    if (el.syllabusTree && IS_OLYMPIAD) {
+      el.syllabusTree.setAttribute(
+        "aria-label",
+        "Olympiad modules grouped by subject and unit"
+      );
     }
 
     if (el.ecosystemNav && Array.isArray(CFG.ecosystem) && CFG.ecosystem.length) {
@@ -1997,6 +3192,7 @@
 
       btn.append(glyph, txt, cnt);
       btn.addEventListener("click", () => {
+        state.pickIds = [];
         state.subject = item.key;
         if (state.chapterNo) {
           const ch = state.syllabusByNo.get(state.chapterNo);
@@ -2028,6 +3224,7 @@
       btn.textContent = def.label;
 
       btn.addEventListener("click", () => {
+        state.pickIds = [];
         state.classLevel = def.key;
         if (state.subject !== "All" && state.subject !== "Saved") {
           const check = filterVideosCustom({
@@ -2072,6 +3269,24 @@
     });
   }
 
+  // Zero-Lag: rebuilding ~300 <option>s across 4 selects on every render caused
+  // needless DOM churn + style recalc. Only rebuild when the option list changed.
+  function setSelectOptions(select, rows, value) {
+    const sig = rows.map((r) => `${r[0]}\u241e${r[1]}`).join("\u241f");
+    if (select.__optSig !== sig) {
+      const frag = document.createDocumentFragment();
+      for (const [val, label] of rows) {
+        const opt = document.createElement("option");
+        opt.value = val;
+        opt.textContent = label;
+        frag.appendChild(opt);
+      }
+      select.replaceChildren(frag);
+      select.__optSig = sig;
+    }
+    if (select.value !== String(value)) select.value = String(value);
+  }
+
   function updateFacetedSelects() {
     // 1. Language Select
     if (el.langSelect) {
@@ -2087,21 +3302,17 @@
         ])
       ).sort((a, b) => (counts.get(b) || 0) - (counts.get(a) || 0) || a.localeCompare(b));
 
-      el.langSelect.replaceChildren();
-      const allOpt = document.createElement("option");
-      allOpt.value = "all";
-      allOpt.textContent = `🌐 All Languages (${baseLangPool.length.toLocaleString()})`;
-      el.langSelect.appendChild(allOpt);
-
-      for (const lg of langs) {
-        const meta = getLangMeta(lg);
-        const c = counts.get(lg) || 0;
-        const opt = document.createElement("option");
-        opt.value = lg;
-        opt.textContent = `🌐 ${meta.option} (${c.toLocaleString()})`;
-        el.langSelect.appendChild(opt);
-      }
-      el.langSelect.value = state.lang;
+      setSelectOptions(
+        el.langSelect,
+        [
+          ["all", `🌐 All Languages (${baseLangPool.length.toLocaleString()})`],
+          ...langs.map((lg) => [
+            lg,
+            `🌐 ${getLangMeta(lg).option} (${(counts.get(lg) || 0).toLocaleString()})`,
+          ]),
+        ],
+        state.lang
+      );
       el.langSelect.classList.toggle("is-filtered", state.lang !== "all");
     }
 
@@ -2121,20 +3332,17 @@
         ])
       ).sort((a, b) => (counts.get(b) || 0) - (counts.get(a) || 0) || a.localeCompare(b));
 
-      el.examSelect.replaceChildren();
-      const allOpt = document.createElement("option");
-      allOpt.value = "all";
-      allOpt.textContent = `🎓 All Streams (${baseExamPool.length.toLocaleString()})`;
-      el.examSelect.appendChild(allOpt);
-
-      for (const ex of exams) {
-        const c = counts.get(ex) || 0;
-        const opt = document.createElement("option");
-        opt.value = ex;
-        opt.textContent = `🎓 ${ex} (${c.toLocaleString()})`;
-        el.examSelect.appendChild(opt);
-      }
-      el.examSelect.value = state.exam;
+      setSelectOptions(
+        el.examSelect,
+        [
+          ["all", `🎓 All Streams (${baseExamPool.length.toLocaleString()})`],
+          ...exams.map((ex) => [
+            ex,
+            `🎓 ${ex} (${(counts.get(ex) || 0).toLocaleString()})`,
+          ]),
+        ],
+        state.exam
+      );
       el.examSelect.classList.toggle("is-filtered", state.exam !== "all");
     }
 
@@ -2153,20 +3361,17 @@
         ])
       ).sort((a, b) => (counts.get(b) || 0) - (counts.get(a) || 0) || a.localeCompare(b));
 
-      el.educatorSelect.replaceChildren();
-      const allOpt = document.createElement("option");
-      allOpt.value = "";
-      allOpt.textContent = `👨‍🏫 All Educators (${counts.size || educators.length})`;
-      el.educatorSelect.appendChild(allOpt);
-
-      for (const name of educators) {
-        const c = counts.get(name) || 0;
-        const opt = document.createElement("option");
-        opt.value = name;
-        opt.textContent = `👨‍🏫 ${name} (${c})`;
-        el.educatorSelect.appendChild(opt);
-      }
-      el.educatorSelect.value = state.educator;
+      setSelectOptions(
+        el.educatorSelect,
+        [
+          ["", `👨‍🏫 All Educators (${counts.size})`],
+          ...educators.map((name) => [
+            name,
+            `👨‍🏫 ${name} (${counts.get(name) || 0})`,
+          ]),
+        ],
+        state.educator
+      );
       el.educatorSelect.classList.toggle("is-filtered", Boolean(state.educator));
     }
 
@@ -2186,7 +3391,6 @@
 
     const buildInto = (container, filterQuery, closeDrawerOnPick) => {
       if (!container) return;
-      container.replaceChildren();
       const q = (filterQuery || "").toLowerCase().trim();
       const qPlan = q ? analyzeStudentQuery(q) : null;
 
@@ -2230,6 +3434,31 @@
         el.railChTotal.textContent = String(visibleChapters.length);
       }
 
+      // Zero-Lag: the tree only changes when its membership, counts, done-state or
+      // filter text change. Picking a chapter only moves aria-current, so patch that
+      // in place instead of re-shaping ~80 bilingual rows of text (the dominant
+      // Layout cost of a chapter tap).
+      const treeSig = [
+        state.subject,
+        q,
+        ...visibleChapters.map(
+          (ch) =>
+            `${ch.chapter_no}:${chCounts.get(ch.chapter_no) || 0}:${state.doneChapters.has(String(ch.chapter_no)) ? 1 : 0}`
+        ),
+      ].join("|");
+      if (container.__treeSig === treeSig) {
+        for (const btn of container.querySelectorAll(".ch-nav-btn[data-ch]")) {
+          if (Number(btn.dataset.ch) === state.chapterNo) {
+            btn.setAttribute("aria-current", "true");
+          } else {
+            btn.removeAttribute("aria-current");
+          }
+        }
+        return;
+      }
+      container.__treeSig = treeSig;
+      container.replaceChildren();
+
       const byUnit = new Map();
       for (const ch of visibleChapters) {
         const uKey =
@@ -2245,7 +3474,7 @@
         empty.style.padding = "0.75rem";
         empty.style.color = "var(--muted)";
         empty.style.fontSize = "0.82rem";
-        empty.textContent = "No matching chapters.";
+        empty.textContent = `No matching ${UNIT_PLURAL.toLowerCase()}.`;
         container.appendChild(empty);
         return;
       }
@@ -2274,6 +3503,7 @@
           const isCurrent = state.chapterNo === ch.chapter_no;
           const isDone = state.doneChapters.has(String(ch.chapter_no));
           btn.className = `ch-nav-btn${isDone ? " is-done" : ""}`;
+          btn.dataset.ch = String(ch.chapter_no);
           if (isCurrent) btn.setAttribute("aria-current", "true");
 
           const noSpan = document.createElement("span");
@@ -2324,8 +3554,29 @@
       }
     };
 
-    buildInto(el.syllabusTree, el.chFilter?.value || "", false);
-    buildInto(el.drawerSyllabusTree, el.drawerChFilter?.value || "", true);
+    // Zero-Lag Engine: only build trees that are actually on screen. The desktop rail
+    // is display:none below 1024px and the mobile drawer only exists while its
+    // <dialog> is open — rebuilding 80-chapter trees for hidden containers was pure jank.
+    const railVisible = RAIL_MQ.matches;
+    const drawerVisible = Boolean(el.syllabusDialog?.open);
+    if (railVisible) {
+      buildInto(el.syllabusTree, el.chFilter?.value || "", false);
+      railTreeDirty = false;
+    } else {
+      railTreeDirty = true;
+    }
+    if (drawerVisible) {
+      buildInto(el.drawerSyllabusTree, el.drawerChFilter?.value || "", true);
+      drawerTreeDirty = false;
+    } else {
+      drawerTreeDirty = true;
+    }
+  }
+
+  function openSyllabusDrawer() {
+    if (!el.syllabusDialog) return;
+    if (!el.syllabusDialog.open) el.syllabusDialog.showModal();
+    if (drawerTreeDirty) renderSyllabusTrees();
   }
 
   function updateChromeAndCounters(filtered) {
@@ -2348,7 +3599,7 @@
       el.syllabusProgress.value = doneCount;
     }
     if (el.drawerStatProgress) {
-      el.drawerStatProgress.textContent = `✅ ${doneCount} / ${state.syllabus.length} Chapters Understood & Completed`;
+      el.drawerStatProgress.textContent = `✅ ${doneCount} / ${state.syllabus.length} ${UNIT_PLURAL} Understood & Completed`;
     }
 
     if (el.cntSaved) el.cntSaved.textContent = String(state.saved.size);
@@ -2365,10 +3616,10 @@
       if (state.chapterNo) {
         const ch = state.syllabusByNo.get(state.chapterNo);
         el.mobChLabel.textContent = ch
-          ? `Ch ${pad2(ch.chapter_no)}`
-          : "Chapters";
+          ? `${UNIT_SHORT} ${pad2(ch.chapter_no)}`
+          : UNIT_PLURAL;
       } else {
-        el.mobChLabel.textContent = `Chapters (${state.syllabus.length})`;
+        el.mobChLabel.textContent = `${UNIT_PLURAL} (${state.syllabus.length})`;
       }
     }
     el.mobChaptersBtn?.classList.toggle("is-active", state.chapterNo > 0);
@@ -2387,18 +3638,26 @@
     el.mobEducatorBtn?.classList.toggle("is-active", Boolean(state.educator));
 
     if (el.heroStats && state.syllabus.length) {
-      const chWord = CFG.platformId === "olympiad" ? "Mod" : "Ch";
-      el.heroStats.textContent = `${state.syllabus.length} ${chWord} · ${state.videos.length.toLocaleString()} Verified Lectures`;
+      el.heroStats.textContent = `${state.syllabus.length} ${UNIT_SHORT} · ${state.videos.length.toLocaleString()} Verified Lectures`;
     }
 
     const chaptersRepresented = new Set(filtered.map((v) => v.chapter_no)).size;
-    const summaryText = `${filtered.length.toLocaleString()} matching lectures across ${chaptersRepresented} chapter${chaptersRepresented === 1 ? "" : "s"}`;
+    const chLabel =
+      chaptersRepresented === 1
+        ? UNIT_SINGULAR.toLowerCase()
+        : UNIT_PLURAL.toLowerCase();
+    const summaryText = `${filtered.length.toLocaleString()} matching lectures across ${chaptersRepresented} ${chLabel}`;
     if (el.count) el.count.textContent = summaryText;
   }
 
   function renderActiveFilterPills(filtered) {
     if (!el.activeFiltersBar || !el.activeFilters) return;
     el.activeFilters.replaceChildren();
+
+    if (state.pickIds.length > 0) {
+      el.activeFiltersBar.hidden = true;
+      return;
+    }
 
     const chips = [];
     if (state.subject === "Saved") {
@@ -2431,8 +3690,8 @@
       const ch = state.syllabusByNo.get(state.chapterNo);
       chips.push({
         label: ch
-          ? `Ch ${pad2(ch.chapter_no)}: ${ch.chapter}`
-          : `Ch ${state.chapterNo}`,
+          ? `${UNIT_SHORT} ${pad2(ch.chapter_no)}: ${ch.chapter}`
+          : `${UNIT_SHORT} ${state.chapterNo}`,
         clear: () => {
           state.chapterNo = 0;
         },
@@ -2538,7 +3797,7 @@
     const fb = document.createElement("div");
     fb.className = "thumb-fallback";
     const st = document.createElement("strong");
-    st.textContent = `Ch ${pad2(v.chapter_no)} · ${v.chapter}`;
+    st.textContent = `${UNIT_SHORT} ${pad2(v.chapter_no)} · ${v.chapter}`;
     const sp = document.createElement("span");
     sp.textContent = v.educator || v.channel || CFG.brandName;
     fb.append(st, sp);
@@ -2559,6 +3818,7 @@
     img.decoding = "async";
     if (opts.highPriority) {
       img.fetchPriority = "high";
+      img.loading = "eager";
     } else if (opts.lazy) {
       img.loading = "lazy";
     }
@@ -2582,7 +3842,7 @@
   }
 
   /* ==========================================================================
-     STUDENT & CLASSROOM VIDEO CARD (Teaching Vibe + Tracker + WhatsApp)
+     STUDENT & CLASSROOM VIDEO CARD (Teaching Vibe + Tracker + Homework + WA)
      ========================================================================== */
   function createVideoCard(v, opts = {}) {
     const card = document.createElement("article");
@@ -2618,6 +3878,12 @@
 
     const topBar = document.createElement("span");
     topBar.className = "thumb-bar-top";
+    if (opts.assignIndex) {
+      const ordBadge = document.createElement("span");
+      ordBadge.className = "assign-order-badge";
+      ordBadge.textContent = `#${opts.assignIndex}`;
+      topBar.appendChild(ordBadge);
+    }
     const lMeta = getLangMeta(v.language || "Hinglish");
     const langPill = document.createElement("span");
     langPill.className = `thumb-lang-pill${lMeta.regional ? " is-regional" : ""}`;
@@ -2655,10 +3921,10 @@
     chBtn.className = "card-chapter-pill";
     const shortSubj = CFG.subjectMeta[v.subject]?.short || v.subject;
     const streamTxt = v.target_exam ? ` · ${v.target_exam}` : "";
-    chBtn.textContent = `${shortSubj} · Ch ${pad2(v.chapter_no)} ${v.chapter}${streamTxt}`;
+    chBtn.textContent = `${shortSubj} · ${UNIT_SHORT} ${pad2(v.chapter_no)} ${v.chapter}${streamTxt}`;
     chBtn.setAttribute(
       "aria-label",
-      `Open 1-2-3 Chapter Roadmap for Chapter ${pad2(v.chapter_no)} ${v.chapter} (${shortRef(v)})`
+      `Open 1-2-3 ${UNIT_SINGULAR} Roadmap for ${UNIT_SINGULAR} ${pad2(v.chapter_no)} ${v.chapter} (${shortRef(v)})`
     );
     chBtn.addEventListener("click", () => {
       jumpToChapter(state.chapterNo === v.chapter_no ? 0 : v.chapter_no);
@@ -2713,6 +3979,7 @@
 
     eduBtn.append(av, eduTxt);
     eduBtn.addEventListener("click", () => {
+      state.pickIds = [];
       state.educator = state.educator === creatorName ? "" : creatorName;
       renderAll({ announce: true });
     });
@@ -2725,7 +3992,7 @@
       eduRow.appendChild(viewsHint);
     }
 
-    // Distraction-Free Study Tracker Strip (Understood & Completed + Save for Revision)
+    // Distraction-Free Study Tracker Strip (Understood + Revision + Assign Homework)
     const trackerRow = document.createElement("div");
     trackerRow.className = "card-tracker-row";
 
@@ -2738,7 +4005,7 @@
       "aria-label",
       `Mark lecture understood and completed: ${v.title} (${shortRef(v)})`
     );
-    doneCardBtn.textContent = isVidDone ? "✅ Completed" : "✅ Understood";
+    doneCardBtn.textContent = isVidDone ? "✅ Done" : "✅ Understood";
     doneCardBtn.addEventListener("click", () => {
       toggleVideoDone(v);
       renderAll({ announce: false });
@@ -2752,14 +4019,18 @@
       "aria-label",
       `Save lecture for revision before exam: ${v.title} (${shortRef(v)})`
     );
-    reviseBtn.textContent = isSaved ? "🔖 In Revision" : "🔖 Save Revision";
+    reviseBtn.textContent = isSaved ? "🔖 Saved" : "🔖 Revise";
 
     const handleSaveToggle = () => {
       const nowSaved = toggleSavedVideo(v);
       saveBtn.setAttribute("aria-pressed", nowSaved ? "true" : "false");
+      saveBtn.setAttribute(
+        "aria-label",
+        `${nowSaved ? "Remove from Revision List" : "Save to Revision List"}: ${v.title} (${shortRef(v)})`
+      );
       saveBtn.textContent = nowSaved ? "★" : "☆";
       reviseBtn.setAttribute("aria-pressed", nowSaved ? "true" : "false");
-      reviseBtn.textContent = nowSaved ? "🔖 In Revision" : "🔖 Save Revision";
+      reviseBtn.textContent = nowSaved ? "🔖 Saved" : "🔖 Revise";
       if (el.cntSaved) el.cntSaved.textContent = String(state.saved.size);
       if (state.subject === "Saved" || state.chapterNo > 0) {
         renderAll({ announce: false });
@@ -2768,7 +4039,22 @@
     saveBtn.addEventListener("click", handleSaveToggle);
     reviseBtn.addEventListener("click", handleSaveToggle);
 
-    trackerRow.append(doneCardBtn, reviseBtn);
+    const packBtn = document.createElement("button");
+    packBtn.type = "button";
+    packBtn.className = "card-pack-btn";
+    const inPack = isVideoInPack(v);
+    packBtn.setAttribute("aria-pressed", inPack ? "true" : "false");
+    packBtn.setAttribute(
+      "aria-label",
+      `${inPack ? "Remove from Classroom Homework Pack" : "Add to Classroom Homework Pack"}: ${v.title} (${shortRef(v)})`
+    );
+    packBtn.textContent = inPack ? "📋 Assigned" : "📋 Assign";
+    packBtn.addEventListener("click", () => {
+      toggleHomeworkPack(v);
+      renderAll({ announce: false });
+    });
+
+    trackerRow.append(doneCardBtn, reviseBtn, packBtn);
 
     // Dual Action Footer + 1-Tap WhatsApp Share
     const footer = document.createElement("div");
@@ -2828,7 +4114,7 @@
     if (state.subject === "Saved") {
       h2.textContent = "📌 Your Exam Revision List is currently empty";
       p.textContent =
-        "Tap “🔖 Save Revision” on any lecture card or 1-2-3 Chapter Roadmap step to build your personal exam-week playlist offline — zero login needed.";
+        "Tap “🔖 Revise” on any lecture card or 1-2-3 Chapter Roadmap step to build your personal exam-week playlist offline — zero login needed.";
       const allBtn = document.createElement("button");
       allBtn.type = "button";
       allBtn.className = "primary-btn";
@@ -2863,7 +4149,7 @@
         .slice(0, 2)
         .join("/");
       const chDesc = state.chapterNo
-        ? `Ch ${pad2(state.chapterNo)}`
+        ? `${UNIT_SHORT} ${pad2(state.chapterNo)}`
         : "this selection";
       p.textContent = `No videos in ${state.lang} for ${chDesc} yet — ${withoutLang.length} verified lectures are ready in ${topLangs || "other languages"}.`;
 
@@ -2939,7 +4225,81 @@
     actions.appendChild(resetBtn);
 
     box.append(h2, p, actions);
+
+    // 1-Tap Available Chapters Strip in Chosen Language / Exam / Educator
+    if (state.chapterNo > 0) {
+      const otherChPool = filterVideosCustom({ chapterNo: 0, query: "" });
+      if (otherChPool.length > 0) {
+        const chMap = new Map();
+        for (const v of otherChPool) {
+          chMap.set(v.chapter_no, (chMap.get(v.chapter_no) || 0) + 1);
+        }
+        const availChs = Array.from(chMap.entries())
+          .sort((a, b) => b[1] - a[1] || a[0] - b[0])
+          .slice(0, 6);
+        if (availChs.length > 0) {
+          const chWrap = document.createElement("div");
+          chWrap.className = "fallback-ch-wrap";
+          const chLbl = document.createElement("span");
+          chLbl.className = "fallback-ch-label";
+          const filterLabel =
+            state.lang !== "all"
+              ? getLangMeta(state.lang).pill
+              : state.exam !== "all"
+                ? state.exam
+                : state.educator || "active filter";
+          chLbl.textContent = `📖 Available ${UNIT_PLURAL.toLowerCase()} in ${filterLabel} (1-tap jump):`;
+          const chStrip = document.createElement("div");
+          chStrip.className = "fallback-ch-strip";
+          for (const [cNo, cnt] of availChs) {
+            const chMeta = state.syllabusByNo.get(cNo);
+            if (!chMeta) continue;
+            const cBtn = document.createElement("button");
+            cBtn.type = "button";
+            cBtn.className = "compass-ch-pill";
+            cBtn.textContent = `${UNIT_SHORT} ${pad2(cNo)} · ${chMeta.chapter} (${cnt})`;
+            cBtn.addEventListener("click", () => jumpToChapter(cNo));
+            chStrip.appendChild(cBtn);
+          }
+          chWrap.append(chLbl, chStrip);
+          box.appendChild(chWrap);
+        }
+      }
+    }
+
     el.list.appendChild(box);
+
+    // Zero-Dead-End Bilingual Fallback Video Shelf (Top 4 Lectures for Current Selection)
+    const fallbackPool = withoutLang.length
+      ? withoutLang
+      : withoutEducator.length
+        ? withoutEducator
+        : withoutExam.length
+          ? withoutExam
+          : withoutSort.length
+            ? withoutSort
+            : withoutQuery;
+    if (fallbackPool && fallbackPool.length > 0) {
+      const topFallback = fallbackPool
+        .slice()
+        .sort((a, b) => compareItems(a, b, "trending"))
+        .slice(0, 4);
+      const shelfWrap = document.createElement("section");
+      shelfWrap.className = "fallback-shelf-wrap";
+      const shelfTitle = document.createElement("h3");
+      shelfTitle.className = "fallback-shelf-title";
+      const chDesc = state.chapterNo
+        ? `${UNIT_SHORT} ${pad2(state.chapterNo)} · ${state.syllabusByNo.get(state.chapterNo)?.chapter || ""}`
+        : "this topic";
+      shelfTitle.textContent = `⚡ Instant Bilingual Fallback — Top Verified Lectures for ${chDesc}:`;
+      const grid = document.createElement("div");
+      grid.className = "cards-grid";
+      for (const v of topFallback) {
+        grid.appendChild(createVideoCard(v, { lazyImage: true }));
+      }
+      shelfWrap.append(shelfTitle, grid);
+      el.list.appendChild(shelfWrap);
+    }
   }
 
   /* ==========================================================================
@@ -2947,6 +4307,7 @@
      ========================================================================== */
   function renderMainStream(filtered) {
     if (!el.list) return;
+    streamRenderToken += 1; // cancel any in-flight chunked render
     if (!filtered.length) {
       renderSmartEmptyState();
       return;
@@ -2961,14 +4322,6 @@
 
       const grid = document.createElement("div");
       grid.className = "cards-grid";
-      slice.forEach((v, idx) => {
-        grid.appendChild(
-          createVideoCard(v, {
-            highPriority: idx < 4,
-            lazyImage: idx >= 8,
-          })
-        );
-      });
       el.list.appendChild(grid);
 
       if (sorted.length > state.flatLimit) {
@@ -2986,6 +4339,18 @@
         moreWrap.appendChild(moreBtn);
         el.list.appendChild(moreWrap);
       }
+
+      const nextOpts = makeCardPriorityCounter();
+      function* flatJobs() {
+        for (let i = 0; i < slice.length; i += CARD_CHUNK) {
+          const frag = document.createDocumentFragment();
+          const batch = slice.slice(i, i + CARD_CHUNK);
+          for (const v of batch) frag.appendChild(createVideoCard(v, nextOpts()));
+          grid.appendChild(frag);
+          yield { cards: batch.length };
+        }
+      }
+      runChunkedRender(flatJobs(), (_job, cardsSoFar) => cardsSoFar >= SYNC_CARD_BUDGET);
       return;
     }
 
@@ -3027,10 +4392,7 @@
       );
     }
 
-    el.list.replaceChildren();
-    const frag = document.createDocumentFragment();
-
-    chapterEntries.forEach(({ chNo, chMeta, ped, roi, items }, secIdx) => {
+    const buildSectionShell = ({ chNo, chMeta, ped, roi, items }, secIdx) => {
       const section = document.createElement("section");
       section.className = `chapter-section${secIdx >= 3 ? " is-deferred" : ""}`;
       section.id = `chapter-${chNo}`;
@@ -3045,7 +4407,7 @@
       chPill.className = "ch-pill";
       const shortSubj =
         CFG.subjectMeta[chMeta.subject]?.short || chMeta.subject;
-      chPill.textContent = `Ch ${pad2(chNo)} · ${shortSubj}`;
+      chPill.textContent = `${UNIT_SHORT} ${pad2(chNo)} · ${shortSubj}`;
 
       const h2 = document.createElement("h2");
       h2.className = "chapter-heading";
@@ -3077,7 +4439,7 @@
         roadmapBtn.textContent = "🧭 1-2-3 Guide";
         roadmapBtn.setAttribute(
           "aria-label",
-          `Open 1-2-3 Chapter Roadmap for Chapter ${pad2(chNo)} ${chMeta.chapter}`
+          `Open 1-2-3 ${UNIT_SINGULAR} Roadmap for ${UNIT_SINGULAR} ${pad2(chNo)} ${chMeta.chapter}`
         );
         roadmapBtn.addEventListener("click", () => jumpToChapter(chNo));
         actionsCluster.appendChild(roadmapBtn);
@@ -3091,7 +4453,7 @@
       doneBtn.setAttribute("aria-pressed", isDone ? "true" : "false");
       doneBtn.setAttribute(
         "aria-label",
-        `${isDone ? "Mark chapter incomplete" : "Mark chapter understood and completed"}: Chapter ${pad2(chNo)} ${chMeta.chapter}`
+        `${isDone ? `Mark ${UNIT_SINGULAR.toLowerCase()} incomplete` : `Mark ${UNIT_SINGULAR.toLowerCase()} understood and completed`}: ${UNIT_SINGULAR} ${pad2(chNo)} ${chMeta.chapter}`
       );
       doneBtn.textContent = isDone ? "✅ Completed" : "✅ Understood";
       doneBtn.addEventListener("click", () => {
@@ -3107,13 +4469,13 @@
       chShareBtn.textContent = "📲 WhatsApp";
       chShareBtn.setAttribute(
         "aria-label",
-        `Share Chapter ${pad2(chNo)} ${chMeta.chapter} study link on WhatsApp`
+        `Share ${UNIT_SINGULAR} ${pad2(chNo)} ${chMeta.chapter} study link on WhatsApp`
       );
       chShareBtn.addEventListener("click", async () => {
         const payload = buildCurrentViewSharePayload(chNo);
         await copyToClipboard(payload.text);
         showShareToast(
-          `✓ Ch ${pad2(chNo)} WhatsApp study link copied!`,
+          `✓ ${UNIT_SHORT} ${pad2(chNo)} WhatsApp study link copied!`,
           payload.text
         );
       });
@@ -3143,8 +4505,8 @@
         expBtn.setAttribute(
           "aria-label",
           expanded
-            ? `Show top 4 lectures for Chapter ${pad2(chNo)} ${chMeta.chapter}`
-            : `View all ${items.length} lectures for Chapter ${pad2(chNo)} ${chMeta.chapter}`
+            ? `Show top 4 lectures for ${UNIT_SINGULAR} ${pad2(chNo)} ${chMeta.chapter}`
+            : `View all ${items.length} lectures for ${UNIT_SINGULAR} ${pad2(chNo)} ${chMeta.chapter}`
         );
         expBtn.addEventListener("click", () => {
           if (state.expandedChapters.has(chNo)) state.expandedChapters.delete(chNo);
@@ -3158,44 +4520,148 @@
 
       const grid = document.createElement("div");
       grid.className = "cards-grid";
-      visibleItems.forEach((v, cardIdx) => {
-        grid.appendChild(
-          createVideoCard(v, {
-            highPriority: secIdx === 0 && cardIdx < 4,
-            lazyImage: secIdx >= 1,
-          })
-        );
-      });
-
       section.append(header, grid);
-      frag.appendChild(section);
-    });
+      return { section, grid, visibleItems };
+    };
 
-    el.list.appendChild(frag);
+    const nextCardOpts = makeCardPriorityCounter();
+    const SYNC_SECTIONS = 3;
+
+    function* streamJobs() {
+      for (let secIdx = 0; secIdx < chapterEntries.length; secIdx += 1) {
+        yield { sectionStart: secIdx };
+        const { section, grid, visibleItems } = buildSectionShell(
+          chapterEntries[secIdx],
+          secIdx
+        );
+        el.list.appendChild(section);
+        for (let i = 0; i < visibleItems.length; i += CARD_CHUNK) {
+          const frag = document.createDocumentFragment();
+          const batch = visibleItems.slice(i, i + CARD_CHUNK);
+          for (const v of batch) frag.appendChild(createVideoCard(v, nextCardOpts()));
+          grid.appendChild(frag);
+          yield { cards: batch.length };
+        }
+      }
+    }
+
+    // With a chapter roadmap open, the roadmap fills the first viewport, so only
+    // one row of cards needs to exist in frame 1.
+    const cardBudget = state.chapterNo ? CARD_CHUNK : SYNC_CARD_BUDGET;
+    el.list.replaceChildren();
+    runChunkedRender(streamJobs(), (job, cardsSoFar) =>
+      (job.sectionStart !== undefined && job.sectionStart >= SYNC_SECTIONS) ||
+      cardsSoFar >= cardBudget
+    );
   }
 
-  function renderAll({ announce = false, syncUrl = true } = {}) {
+  /* ==========================================================================
+     ZERO-LAG ENGINE: Frame-1 Sync Budget + rAF-Chunked Off-Screen Rendering
+     ========================================================================== */
+  const SYNC_CARD_BUDGET = 12;
+  const CARD_CHUNK = 4;
+  const FRAME_BUDGET_MS = 8;
+
+  // Image priority per modern-web-guidance `optimize-image-priority`:
+  // fetchpriority="high" on at most the first 2 (LCP candidates), default eager
+  // loading for the rest of the first viewport (cards 3–8), loading="lazy" after.
+  function makeCardPriorityCounter() {
+    let seq = 0;
+    return () => {
+      const i = seq;
+      seq += 1;
+      return { highPriority: i < 2, lazyImage: i >= 8 };
+    };
+  }
+
+  // Drains `gen` synchronously until `stopSync(job, cardsSoFar)` is true, then
+  // continues in requestAnimationFrame slices of <= FRAME_BUDGET_MS. Any newer
+  // render bumps `streamRenderToken`, cancelling the in-flight chunk loop.
+  function runChunkedRender(gen, stopSync) {
+    const token = ++streamRenderToken;
+    let cards = 0;
+    for (;;) {
+      const r = gen.next();
+      if (r.done) return;
+      if (r.value?.cards) cards += r.value.cards;
+      if (stopSync(r.value || {}, cards)) break;
+    }
+    const pump = () => {
+      if (token !== streamRenderToken) return;
+      const deadline = performance.now() + FRAME_BUDGET_MS;
+      while (performance.now() < deadline) {
+        const r = gen.next();
+        if (r.done) return;
+      }
+      requestAnimationFrame(pump);
+    };
+    requestAnimationFrame(pump);
+  }
+
+  // Zero-Lag Engine (modern-web-guidance `break-up-long-tasks`): an interaction
+  // paints the user's focus area first (tabs, pills, roadmap, first cards), then
+  // off-focus chrome (facet <select>s, compass contents, syllabus rail) is
+  // rebuilt right after that paint. Boot & popstate render fully synchronously.
+  let secondaryRenderToken = 0;
+
+  function renderSecondaryChrome() {
+    updateFacetedSelects();
+    renderVisualCompass();
+    renderSyllabusTrees();
+  }
+
+  function renderAll({ announce = false, syncUrl = true, deferSecondary = true } = {}) {
     const filtered = getFilteredVideos();
     renderSubjectTabs();
     renderClassPills();
-    updateFacetedSelects();
-    renderVisualCompass();
+    renderContinueStudyBar();
+    const showingPack = renderAssignedPackSection();
+    renderHomeworkTray();
+    if (el.visualCompass) {
+      el.visualCompass.hidden =
+        state.userRole === "teacher" || state.pickIds.length > 0;
+    }
     renderPhoneticBanner();
     updateChromeAndCounters(filtered);
     renderActiveFilterPills(filtered);
     renderChapterRoadmap();
-    renderSyllabusTrees();
-    renderMainStream(filtered);
+
+    const secTok = ++secondaryRenderToken;
+    if (deferSecondary) {
+      requestAnimationFrame(() =>
+        setTimeout(() => {
+          if (secTok === secondaryRenderToken) renderSecondaryChrome();
+        }, 0)
+      );
+    } else {
+      renderSecondaryChrome();
+    }
+
+    if (showingPack) {
+      streamRenderToken += 1;
+      if (el.list) {
+        el.list.hidden = true;
+        el.list.replaceChildren();
+      }
+    } else {
+      if (el.list) el.list.hidden = false;
+      renderMainStream(filtered);
+    }
 
     if (syncUrl) syncUrlAndTitle();
 
     if (announce && el.liveStatus) {
       const chCount = new Set(filtered.map((v) => v.chapter_no)).size;
-      el.liveStatus.textContent = `${filtered.length.toLocaleString()} lectures across ${chCount} chapters`;
+      const chLbl =
+        chCount === 1
+          ? UNIT_SINGULAR.toLowerCase()
+          : UNIT_PLURAL.toLowerCase();
+      el.liveStatus.textContent = `${filtered.length.toLocaleString()} lectures across ${chCount} ${chLbl}`;
     }
   }
 
   function resetAllFilters() {
+    state.pickIds = [];
     state.subject = "All";
     state.classLevel = "all";
     state.chapterNo = 0;
@@ -3207,18 +4673,156 @@
     state.voiceFallbackOpen = false;
     state.flatLimit = FLAT_PAGE_SIZE;
     if (el.q) el.q.value = "";
+    if (el.chFilter) el.chFilter.value = "";
+    if (el.drawerChFilter) el.drawerChFilter.value = "";
     syncSearchClear();
     renderAll({ announce: true });
   }
 
   /* ==========================================================================
-     INLINE CLASSROOM PLAYER (referrerpolicy="strict-origin-when-cross-origin")
+     UPGRADED CINEMA STUDY PLAYER (Synchronous Teardown + Up-Next + Notes)
      ========================================================================== */
+  const YT_VID_RE = /^[A-Za-z0-9_-]{11}$/;
+  const YT_LIST_RE = /^(?:PL|OL|UU|FL|RD)[A-Za-z0-9_-]{6,}$/;
+
+  function teardownPlayer() {
+    if (el.playerStage) {
+      for (const frame of el.playerStage.querySelectorAll("iframe")) {
+        try {
+          frame.src = "about:blank";
+        } catch {}
+      }
+      el.playerStage.replaceChildren();
+    }
+    if (el.playerSamples) {
+      el.playerSamples.hidden = true;
+      el.playerSamples.replaceChildren();
+    }
+    if (el.playerUpnext) {
+      el.playerUpnext.hidden = true;
+      el.playerUpnext.replaceChildren();
+    }
+    state.activePlayerVideo = null;
+  }
+
+  function resolvePlayableEmbed(v, preferredVideoId = "") {
+    const sampleId = Array.isArray(v.sample_lectures)
+      ? v.sample_lectures.find((s) =>
+          YT_VID_RE.test(String(s?.video_id || "").trim())
+        )?.video_id || ""
+      : "";
+    const thumbId =
+      /\/vi\/([A-Za-z0-9_-]{11})\//.exec(String(v.thumbnail || ""))?.[1] || "";
+    const urlVid =
+      /[?&]v=([A-Za-z0-9_-]{11})/.exec(String(v.url || ""))?.[1] || "";
+
+    const candidates = [
+      preferredVideoId,
+      v.embed_video_id,
+      v.provider === "youtube" ? v.video_id : "",
+      sampleId,
+      thumbId,
+      urlVid,
+    ]
+      .map((x) => String(x || "").trim())
+      .filter((x) => YT_VID_RE.test(x));
+
+    const vid = candidates[0] || "";
+
+    const rawList =
+      v.provider === "playlist"
+        ? String(v.video_id || "").trim()
+        : /[?&]list=([A-Za-z0-9_-]{8,})/.exec(String(v.url || ""))?.[1] || "";
+    const listId = YT_LIST_RE.test(rawList) ? rawList : "";
+
+    if (vid && listId) {
+      return {
+        src: `https://www.youtube.com/embed/${encodeURIComponent(vid)}?list=${encodeURIComponent(listId)}&autoplay=1&rel=0`,
+        videoId: vid,
+        listId,
+      };
+    }
+    if (vid) {
+      return {
+        src: `https://www.youtube.com/embed/${encodeURIComponent(vid)}?autoplay=1&rel=0`,
+        videoId: vid,
+        listId: "",
+      };
+    }
+    if (listId) {
+      return {
+        src: `https://www.youtube.com/embed/videoseries?listType=playlist&list=${encodeURIComponent(listId)}&autoplay=1&rel=0`,
+        videoId: "",
+        listId,
+      };
+    }
+    return { src: "", videoId: "", listId: "" };
+  }
+
   function syncPlayerDoneButton() {
     if (!el.playerDoneBtn || !state.activePlayerVideo) return;
     const isDone = state.doneVideos.has(state.activePlayerVideo._key);
     el.playerDoneBtn.setAttribute("aria-pressed", isDone ? "true" : "false");
     el.playerDoneBtn.textContent = isDone ? "✅ Completed!" : "✅ Mark Done";
+  }
+
+  function syncPlayerNotesForVideo(v) {
+    if (!el.playerNotesInput || !v) return;
+    const note = String(state.lectureNotes[v._key] || "");
+    el.playerNotesInput.value = note;
+    if (el.playerNotesStatus) {
+      el.playerNotesStatus.textContent = note.trim()
+        ? "✓ Saved offline for this lecture"
+        : "Saved offline on this device";
+    }
+  }
+
+  function buildLectureNotesShareText(v) {
+    if (!v) return "";
+    const note = (el.playerNotesInput?.value || "").trim();
+    const creator = v.educator || v.channel || CFG.brandName;
+    const header = `📝 *Revision Notes — ${UNIT_SHORT} ${pad2(v.chapter_no)} ${v.chapter}*\n▶ ${v.title} (${creator})`;
+    const body = note ? `\n\n${note}` : "";
+    return `${header}${body}\n\n🎬 Lecture: ${v.url}`;
+  }
+
+  function renderPlayerUpNext(v) {
+    if (!el.playerUpnext) return;
+    const peers = state.videos
+      .filter(
+        (item) => item.chapter_no === v.chapter_no && item._key !== v._key
+      )
+      .sort((a, b) => compareItems(a, b, state.sort))
+      .slice(0, 5);
+
+    if (!peers.length) {
+      el.playerUpnext.hidden = true;
+      el.playerUpnext.replaceChildren();
+      return;
+    }
+
+    el.playerUpnext.hidden = false;
+    el.playerUpnext.replaceChildren();
+
+    const lbl = document.createElement("span");
+    lbl.className = "player-upnext-label";
+    lbl.textContent = `⏭ Up Next in ${UNIT_SHORT} ${pad2(v.chapter_no)} (${v.chapter}):`;
+
+    const strip = document.createElement("div");
+    strip.className = "player-upnext-strip";
+
+    for (const nextVid of peers) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "player-upnext-btn";
+      const creator = nextVid.educator || nextVid.channel || "";
+      btn.textContent = `▶ ${creator ? `${creator}: ` : ""}${nextVid.title}`;
+      btn.title = `${nextVid.title} (${creator})`;
+      btn.addEventListener("click", () => openPlayer(nextVid));
+      strip.appendChild(btn);
+    }
+
+    el.playerUpnext.append(lbl, strip);
   }
 
   function openPlayer(v) {
@@ -3227,43 +4831,25 @@
       return;
     }
 
+    const embedInfo = resolvePlayableEmbed(v);
+    if (!embedInfo.src) {
+      window.open(v.url, "_blank", "noopener,noreferrer");
+      return;
+    }
+
+    recordLastLecture(v);
     state.activePlayerVideo = v;
     syncPlayerDoneButton();
-
-    const embedId =
-      v.embed_video_id || (v.provider === "youtube" ? v.video_id : "");
-
-    if (!embedId && v.provider === "playlist") {
-      const listId = v.video_id;
-      if (!listId) {
-        window.open(v.url, "_blank", "noopener,noreferrer");
-        return;
-      }
-      mountIframe(
-        `https://www.youtube.com/embed/videoseries?list=${encodeURIComponent(listId)}&rel=0`,
-        v
-      );
-      return;
-    }
-
-    if (v.provider === "playlist" && v.video_id) {
-      mountIframe(
-        `https://www.youtube.com/embed/${encodeURIComponent(embedId)}?list=${encodeURIComponent(v.video_id)}&autoplay=1&rel=0`,
-        v
-      );
-      return;
-    }
-
-    mountIframe(
-      `https://www.youtube.com/embed/${encodeURIComponent(embedId)}?autoplay=1&rel=0`,
-      v
-    );
+    syncPlayerNotesForVideo(v);
+    renderContinueStudyBar();
+    mountIframe(embedInfo, v);
+    renderPlayerUpNext(v);
   }
 
-  function mountIframe(src, v) {
+  function mountIframe(embedInfo, v) {
     if (el.playerBadge) el.playerBadge.textContent = v._vibe.label;
     if (el.playerChannel) {
-      el.playerChannel.textContent = `${v.educator || v.channel} · Ch ${pad2(v.chapter_no)} ${v.chapter}`;
+      el.playerChannel.textContent = `${v.educator || v.channel} · ${UNIT_SHORT} ${pad2(v.chapter_no)} ${v.chapter}`;
     }
     if (el.playerTitle) el.playerTitle.textContent = v.title;
     if (el.playerExt) {
@@ -3275,11 +4861,16 @@
     }
 
     if (el.playerStage) {
+      for (const old of el.playerStage.querySelectorAll("iframe")) {
+        try {
+          old.src = "about:blank";
+        } catch {}
+      }
       el.playerStage.replaceChildren();
       const iframe = document.createElement("iframe");
       iframe.referrerPolicy = "strict-origin-when-cross-origin";
       iframe.setAttribute("referrerpolicy", "strict-origin-when-cross-origin");
-      iframe.src = src;
+      iframe.src = embedInfo.src;
       iframe.title = v.title;
       iframe.allow =
         "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share";
@@ -3288,21 +4879,36 @@
     }
 
     if (el.playerSamples) {
-      const samples = Array.isArray(v.sample_lectures) ? v.sample_lectures : [];
+      const samples = Array.isArray(v.sample_lectures)
+        ? v.sample_lectures.filter((s) =>
+            YT_VID_RE.test(String(s?.video_id || "").trim())
+          )
+        : [];
       if (samples.length) {
         el.playerSamples.hidden = false;
         el.playerSamples.replaceChildren();
-        for (const s of samples.slice(0, 5)) {
+        const sampleBtns = [];
+        for (const s of samples.slice(0, 6)) {
           const b = document.createElement("button");
           b.type = "button";
-          b.className = "player-sample-btn";
+          const isCurrent = s.video_id === embedInfo.videoId;
+          b.className = `player-sample-btn${isCurrent ? " is-active" : ""}`;
+          if (isCurrent) b.setAttribute("aria-current", "true");
           b.textContent = `▶ ${s.title}`;
           b.addEventListener("click", () => {
+            const nextEmbed = resolvePlayableEmbed(v, s.video_id);
             const iframe = el.playerStage?.querySelector("iframe");
-            if (iframe && s.video_id) {
-              iframe.src = `https://www.youtube.com/embed/${encodeURIComponent(s.video_id)}?list=${encodeURIComponent(v.video_id)}&autoplay=1&rel=0`;
+            if (iframe && nextEmbed.src) {
+              iframe.src = nextEmbed.src;
+              for (const other of sampleBtns) {
+                other.classList.remove("is-active");
+                other.removeAttribute("aria-current");
+              }
+              b.classList.add("is-active");
+              b.setAttribute("aria-current", "true");
             }
           });
+          sampleBtns.push(b);
           el.playerSamples.appendChild(b);
         }
       } else {
@@ -3336,7 +4942,10 @@
       if (el.pickerTitle) el.pickerTitle.textContent = "👨‍🏫 Select Educator / Channel";
       if (el.pickerSearchWrap) el.pickerSearchWrap.hidden = false;
       if (el.pickerSearch) {
-        el.pickerSearch.placeholder = "Search educator (Om Sharma, Mohit Tyagi)…";
+        const topTwo = state.allEducators.slice(0, 2);
+        el.pickerSearch.placeholder = topTwo.length
+          ? `Search educator (${topTwo.join(", ")})…`
+          : "Search educator or channel…";
       }
     }
 
@@ -3389,6 +4998,7 @@
         cnt.textContent = r.count.toLocaleString();
         btn.append(span, cnt);
         btn.addEventListener("click", () => {
+          state.pickIds = [];
           state.lang = r.value;
           el.pickerDialog?.close();
           renderAll({ announce: true });
@@ -3434,6 +5044,7 @@
       cnt.textContent = r.count.toLocaleString();
       btn.append(span, cnt);
       btn.addEventListener("click", () => {
+        state.pickIds = [];
         state.educator = r.value;
         el.pickerDialog?.close();
         renderAll({ announce: true });
@@ -3509,6 +5120,7 @@
           }
           const cleanSpeech = transcript.replace(/[.।?!]+$/g, "").trim();
           if (cleanSpeech) {
+            state.pickIds = [];
             state.voiceFallbackOpen = false;
             state.query = cleanSpeech;
             if (el.q) el.q.value = cleanSpeech;
@@ -3538,7 +5150,7 @@
   }
 
   /* ==========================================================================
-     THEME TOGGLE, LIGHT-DISMISS FALLBACK & IME-SAFE EVENT BINDINGS
+     THEME TOGGLE, MODAL LIGHT-DISMISS & IME-SAFE EVENT BINDINGS
      ========================================================================== */
   function initThemeToggle() {
     const syncMetaFromStorage = () => {
@@ -3577,19 +5189,57 @@
     });
   }
 
+  function isPointOutsideDialog(event, dialog) {
+    const r = dialog.getBoundingClientRect();
+    return (
+      event.clientX < r.left ||
+      event.clientX > r.right ||
+      event.clientY < r.top ||
+      event.clientY > r.bottom
+    );
+  }
+
   function initLightDismissFallback() {
-    if ("closedBy" in HTMLDialogElement.prototype) return;
     for (const dialog of document.querySelectorAll('dialog[closedby="any"]')) {
-      dialog.addEventListener("click", (event) => {
-        if (event.target !== dialog) return;
-        const rect = dialog.getBoundingClientRect();
-        const isDialogContent =
-          rect.top <= event.clientY &&
-          event.clientY <= rect.top + rect.height &&
-          rect.left <= event.clientX &&
-          event.clientX <= rect.left + rect.width;
-        if (isDialogContent) return;
+      let downOutside = false;
+      let pointerActive = false;
+
+      dialog.addEventListener("pointerdown", (e) => {
+        pointerActive = true;
+        downOutside =
+          dialog.open && e.target === dialog && isPointOutsideDialog(e, dialog);
+      });
+
+      dialog.addEventListener("pointerup", (e) => {
+        if (
+          downOutside &&
+          dialog.open &&
+          e.target === dialog &&
+          isPointOutsideDialog(e, dialog)
+        ) {
+          if (dialog === el.playerDialog) teardownPlayer();
+          dialog.close();
+        }
+        downOutside = false;
+        setTimeout(() => {
+          pointerActive = false;
+        }, 0);
+      });
+
+      dialog.addEventListener("click", (e) => {
+        if (pointerActive || !dialog.open || e.target !== dialog) return;
+        if (
+          (e.clientX === 0 && e.clientY === 0) ||
+          !isPointOutsideDialog(e, dialog)
+        ) {
+          return;
+        }
+        if (dialog === el.playerDialog) teardownPlayer();
         dialog.close();
+      });
+
+      dialog.addEventListener("close", () => {
+        dialog.returnValue = "";
       });
     }
   }
@@ -3612,6 +5262,72 @@
   function bindEvents() {
     el.roleTeacherBtn?.addEventListener("click", () => setRole("teacher"));
     el.roleStudentBtn?.addEventListener("click", () => setRole("student"));
+
+    // Studio v5.0: Resume Last Lecture & Smart Study Streak Bar
+    el.continueStudyBtn?.addEventListener("click", () => {
+      const lastVideo = resolveLastLectureVideo();
+      if (lastVideo) openPlayer(lastVideo);
+    });
+
+    el.continueChBtn?.addEventListener("click", () => {
+      const lastVideo = resolveLastLectureVideo();
+      if (lastVideo) jumpToChapter(lastVideo.chapter_no);
+    });
+
+    el.continueDismissBtn?.addEventListener("click", () => {
+      state.continueDismissed = true;
+      renderContinueStudyBar();
+    });
+
+    // Studio v5.0: Teacher Homework Pack Builder (?pick=id1,id2,...)
+    el.homeworkPackBtn?.addEventListener("click", () => {
+      state.homeworkTrayOpen = !state.homeworkTrayOpen;
+      renderHomeworkTray();
+    });
+
+    el.hwTrayCloseBtn?.addEventListener("click", () => {
+      state.homeworkTrayOpen = false;
+      renderHomeworkTray();
+    });
+
+    el.hwWhatsappBtn?.addEventListener("click", async () => {
+      if (!state.homeworkPack.length) return;
+      const payload = buildHomeworkPackSharePayload(state.homeworkPack);
+      await copyToClipboard(payload.text);
+      showShareToast(
+        `✓ Homework Assignment (${payload.count} lectures) copied! Opening WhatsApp…`,
+        payload.text
+      );
+      window.open(
+        `https://wa.me/?text=${encodeURIComponent(payload.text)}`,
+        "_blank",
+        "noopener,noreferrer"
+      );
+    });
+
+    el.hwCopyBtn?.addEventListener("click", async () => {
+      if (!state.homeworkPack.length) return;
+      const payload = buildHomeworkPackSharePayload(state.homeworkPack);
+      await copyToClipboard(payload.url);
+      showShareToast(
+        `✓ Assignment link (?pick=… · ${payload.count} lectures) copied!`,
+        payload.text
+      );
+    });
+
+    el.hwPreviewBtn?.addEventListener("click", () => {
+      if (!state.homeworkPack.length) return;
+      state.pickIds = state.homeworkPack.slice();
+      state.homeworkTrayOpen = false;
+      renderAll({ announce: true });
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    });
+
+    el.hwClearBtn?.addEventListener("click", () => {
+      state.homeworkPack = [];
+      saveJson(HW_PACK_KEY, []);
+      renderAll({ announce: true });
+    });
 
     // 3-Tap Visual Compass Collapse/Expand + Tap 3 Chapter Select
     el.compassToggleBtn?.addEventListener("click", () => {
@@ -3644,6 +5360,7 @@
 
     // My Revision List Tab
     el.savedDeckBtn?.addEventListener("click", () => {
+      state.pickIds = [];
       state.subject = state.subject === "Saved" ? "All" : "Saved";
       renderAll({ announce: true });
     });
@@ -3654,11 +5371,12 @@
       syncSearchClear();
       clearTimeout(searchTimer);
       searchTimer = setTimeout(() => {
+        state.pickIds = [];
         state.voiceFallbackOpen = false;
         state.query = el.q.value.trim();
         state.flatLimit = FLAT_PAGE_SIZE;
         renderAll({ announce: true });
-      }, 60);
+      }, 80);
     });
 
     el.q?.addEventListener("keydown", (e) => {
@@ -3666,6 +5384,7 @@
       if (e.key === "Enter") {
         e.preventDefault();
         clearTimeout(searchTimer);
+        state.pickIds = [];
         state.voiceFallbackOpen = false;
         state.query = el.q.value.trim();
         state.flatLimit = FLAT_PAGE_SIZE;
@@ -3682,16 +5401,41 @@
       el.q?.focus();
     });
 
+    // Global Keyboard Shortcuts: Cmd+K / Ctrl+K Quick Jump & Modal-Safe "/"
     document.addEventListener("keydown", (e) => {
       if (e.isComposing || e.keyCode === 229) return;
+
+      if (
+        (e.metaKey || e.ctrlKey) &&
+        !e.altKey &&
+        e.key.toLowerCase() === "k"
+      ) {
+        e.preventDefault();
+        if (el.syllabusDialog?.open) {
+          el.drawerChFilter?.focus();
+          el.drawerChFilter?.select();
+          return;
+        }
+        if (el.pickerDialog?.open && !el.pickerSearchWrap?.hidden) {
+          el.pickerSearch?.focus();
+          el.pickerSearch?.select();
+          return;
+        }
+        if (document.querySelector("dialog[open]")) return;
+        el.q?.focus();
+        el.q?.select();
+        return;
+      }
+
+      const activeEl = document.activeElement;
       if (
         e.key === "/" &&
         !e.metaKey &&
         !e.ctrlKey &&
         !e.altKey &&
-        !["INPUT", "TEXTAREA", "SELECT"].includes(
-          document.activeElement?.tagName || ""
-        )
+        !document.querySelector("dialog[open]") &&
+        !["INPUT", "TEXTAREA", "SELECT"].includes(activeEl?.tagName || "") &&
+        !activeEl?.isContentEditable
       ) {
         e.preventDefault();
         el.q?.focus();
@@ -3700,24 +5444,28 @@
 
     // Row 2 Native Dropdowns
     el.langSelect?.addEventListener("change", () => {
+      state.pickIds = [];
       state.lang = el.langSelect.value || "all";
       state.flatLimit = FLAT_PAGE_SIZE;
       renderAll({ announce: true });
     });
 
     el.examSelect?.addEventListener("change", () => {
+      state.pickIds = [];
       state.exam = el.examSelect.value || "all";
       state.flatLimit = FLAT_PAGE_SIZE;
       renderAll({ announce: true });
     });
 
     el.educatorSelect?.addEventListener("change", () => {
+      state.pickIds = [];
       state.educator = el.educatorSelect.value || "";
       state.flatLimit = FLAT_PAGE_SIZE;
       renderAll({ announce: true });
     });
 
     el.sortSelect?.addEventListener("change", () => {
+      state.pickIds = [];
       state.sort = el.sortSelect.value || "trending";
       state.flatLimit = FLAT_PAGE_SIZE;
       renderAll({ announce: true });
@@ -3740,7 +5488,11 @@
 
     // Mobile Sticky Bottom Nav (4 Thumb-Friendly Actions)
     el.mobChaptersBtn?.addEventListener("click", () => {
-      el.syllabusDialog?.showModal();
+      openSyllabusDrawer();
+    });
+
+    RAIL_MQ.addEventListener?.("change", () => {
+      if (RAIL_MQ.matches && railTreeDirty) renderSyllabusTrees();
     });
 
     el.mobLangBtn?.addEventListener("click", () => {
@@ -3771,7 +5523,7 @@
       renderMobilePickerOptions();
     });
 
-    // Player Modal Completed Toggle, Share & Cleanup
+    // Player Modal Completed Toggle, Personal Notes, Share & Synchronous Audio Cleanup
     el.playerDoneBtn?.addEventListener("click", () => {
       if (!state.activePlayerVideo) return;
       toggleVideoDone(state.activePlayerVideo);
@@ -3783,15 +5535,75 @@
       if (state.activePlayerVideo) shareVideoCard(state.activePlayerVideo);
     });
 
-    el.playerDialog?.addEventListener("close", () => {
-      if (el.playerStage) el.playerStage.replaceChildren();
+    el.playerNotesInput?.addEventListener("input", () => {
+      const v = state.activePlayerVideo;
+      if (!v) return;
+      const val = el.playerNotesInput.value;
+      if (val.trim()) {
+        state.lectureNotes[v._key] = val;
+        recordStudyActivity();
+      } else {
+        delete state.lectureNotes[v._key];
+      }
+      saveJson(NOTES_KEY, state.lectureNotes);
+      if (el.playerNotesStatus) {
+        el.playerNotesStatus.textContent = val.trim()
+          ? "✓ Saved offline for this lecture"
+          : "Saved offline on this device";
+      }
     });
+
+    el.playerNotesStampBtn?.addEventListener("click", () => {
+      const v = state.activePlayerVideo;
+      if (!el.playerNotesInput || !v) return;
+      const cur = el.playerNotesInput.value;
+      const prefix = cur && !cur.endsWith("\n") ? "\n" : "";
+      const insert = `${prefix}• [Key Formula / Exam Trap]: `;
+      el.playerNotesInput.value = `${cur}${insert}`;
+      el.playerNotesInput.focus();
+      el.playerNotesInput.setSelectionRange(
+        el.playerNotesInput.value.length,
+        el.playerNotesInput.value.length
+      );
+      el.playerNotesInput.dispatchEvent(new Event("input"));
+    });
+
+    el.playerNotesCopyBtn?.addEventListener("click", async () => {
+      const v = state.activePlayerVideo;
+      if (!v) return;
+      const text = buildLectureNotesShareText(v);
+      await copyToClipboard(text);
+      if (el.playerNotesStatus) {
+        el.playerNotesStatus.textContent = "✓ Notes & lecture link copied!";
+      }
+      showShareToast("✓ Lecture notes copied to clipboard!", text);
+    });
+
+    el.playerNotesWaBtn?.addEventListener("click", async () => {
+      const v = state.activePlayerVideo;
+      if (!v) return;
+      const text = buildLectureNotesShareText(v);
+      await copyToClipboard(text);
+      window.open(
+        `https://wa.me/?text=${encodeURIComponent(text)}`,
+        "_blank",
+        "noopener,noreferrer"
+      );
+    });
+
+    // Synchronous Escape ('cancel') AND 'close' teardown so YouTube audio stops at 0ms
+    el.playerDialog?.addEventListener("cancel", teardownPlayer);
+    el.playerDialog?.addEventListener("close", teardownPlayer);
 
     el.toastCloseBtn?.addEventListener("click", () => {
       if (el.shareToast) el.shareToast.hidden = true;
     });
 
     window.addEventListener("popstate", () => {
+      const fallbackRole = loadInitialRole();
+      state.userRole = fallbackRole;
+      state.compassCollapsed = fallbackRole === "teacher";
+      state.pickIds = [];
       state.subject = "All";
       state.classLevel = "all";
       state.chapterNo = 0;
@@ -3802,7 +5614,7 @@
       state.sort = "trending";
       hydrateStateFromUrl();
       syncSearchClear();
-      renderAll({ announce: false, syncUrl: false });
+      renderAll({ announce: false, syncUrl: false, deferSecondary: false });
     });
 
     bindRadiogroupArrowKeys(el.subjectTabs);
@@ -3817,7 +5629,7 @@
     bindEvents();
 
     try {
-      const res = await fetch("data/videos.json", { cache: "no-cache" });
+      const res = await fetch("data/videos.json");
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const payload = await res.json();
 
@@ -3831,6 +5643,27 @@
       );
       state.videos = Array.isArray(payload.videos) ? payload.videos : [];
       state.videos.forEach(indexRecord);
+
+      // Prune orphaned saved keys and homework pack IDs against current catalog
+      const validKeys = new Set(state.videos.map((v) => v._key));
+      const validPickIds = new Set(state.videos.map(getVideoPickId));
+      let savedPruned = false;
+      for (const k of Array.from(state.saved)) {
+        if (!validKeys.has(k)) {
+          state.saved.delete(k);
+          savedPruned = true;
+        }
+      }
+      if (savedPruned) saveSet(SAVED_KEY, state.saved);
+      invalidateFilterCache();
+
+      const cleanedPack = state.homeworkPack.filter((id) =>
+        validPickIds.has(id)
+      );
+      if (cleanedPack.length !== state.homeworkPack.length) {
+        state.homeworkPack = cleanedPack;
+        saveJson(HW_PACK_KEY, state.homeworkPack);
+      }
 
       const langTotals = new Map();
       const examTotals = new Map();
@@ -3861,7 +5694,7 @@
 
       hydrateStateFromUrl();
       syncSearchClear();
-      renderAll({ announce: false, syncUrl: true });
+      renderAll({ announce: false, syncUrl: true, deferSecondary: false });
     } catch (err) {
       if (el.subline) {
         el.subline.hidden = false;

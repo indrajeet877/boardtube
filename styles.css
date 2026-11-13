@@ -39,6 +39,9 @@
   --wa-dark: #4ade80;
   --wa-soft-dark: #0d2e1b;
 
+  --amber-ink-light: #b45309;
+  --amber-ink-dark: #fbbf24;
+
   /* Native Select SVG Chevrons (Universal OS/Browser Compatible) */
   --chevron-light: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%231e293b' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
   --chevron-dark: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23e2e8f0' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
@@ -67,6 +70,7 @@
   --hot-soft: var(--hot-soft-light);
   --wa: var(--wa-light);
   --wa-soft: var(--wa-soft-light);
+  --amber-ink: var(--amber-ink-light);
   --chevron: var(--chevron-light);
 
   --shadow-sm: 0 1px 3px rgba(11, 17, 32, 0.06), 0 4px 12px -4px rgba(11, 17, 32, 0.05);
@@ -135,6 +139,7 @@ html[data-platform="upboard"] {
     --hot-soft: var(--hot-soft-dark);
     --wa: var(--wa-dark);
     --wa-soft: var(--wa-soft-dark);
+    --amber-ink: var(--amber-ink-dark);
     --chevron: var(--chevron-dark);
     --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.4);
     --shadow-md: 0 14px 32px -8px rgba(0, 0, 0, 0.65);
@@ -160,6 +165,7 @@ html[data-platform="upboard"] {
   --hot-soft: var(--hot-soft-dark);
   --wa: var(--wa-dark);
   --wa-soft: var(--wa-soft-dark);
+  --amber-ink: var(--amber-ink-dark);
   --chevron: var(--chevron-dark);
   --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.4);
   --shadow-md: 0 14px 32px -8px rgba(0, 0, 0, 0.65);
@@ -184,6 +190,7 @@ html[data-platform="upboard"] {
   --hot-soft: var(--hot-soft-light);
   --wa: var(--wa-light);
   --wa-soft: var(--wa-soft-light);
+  --amber-ink: var(--amber-ink-light);
   --chevron: var(--chevron-light);
   --shadow-sm: 0 1px 3px rgba(11, 17, 32, 0.06), 0 4px 12px -4px rgba(11, 17, 32, 0.05);
   --shadow-md: 0 10px 26px -8px rgba(11, 17, 32, 0.14);
@@ -281,14 +288,15 @@ body {
 }
 
 /* High-Contrast Keyboard Focus Ring */
-:where(a, button, input, select, summary, [tabindex]):focus-visible {
+:where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
   outline: 3px solid var(--brand);
   outline-offset: 2px;
 }
 
 button,
 input,
-select {
+select,
+textarea {
   font-family: inherit;
   color: inherit;
 }
@@ -523,8 +531,8 @@ button {
    2. ZERO-POPUP 2-TIER STICKY FILTER BAR
    ========================================================================== */
 .filter-bar-wrap {
-  background: color-mix(in srgb, var(--surface) 94%, transparent);
-  backdrop-filter: blur(10px);
+  /* Zero-Lag: solid surface instead of a 94%-opaque backdrop blur (imperceptible, but re-blurred every scroll frame) */
+  background: var(--surface);
   border-bottom: 1px solid var(--border-subtle);
   padding: 3px 12px 4px;
 }
@@ -1093,8 +1101,10 @@ button {
 .chapter-actions-cluster {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 5px;
   flex-shrink: 0;
+  max-width: 100%;
 }
 
 .ch-share-btn,
@@ -1358,7 +1368,7 @@ button {
 }
 
 .bookmark-icon-btn[aria-pressed="true"] {
-  color: #d97706;
+  color: var(--amber-ink);
   border-color: #f59e0b;
   background: rgba(245, 158, 11, 0.12);
 }
@@ -1640,7 +1650,7 @@ button {
   min-height: 36px;
   padding: 0 10px;
   border-radius: var(--r-xs);
-  background: #16a34a;
+  background: #15803d;
   color: #ffffff;
   font-size: 0.78rem;
   font-weight: 750;
@@ -1670,8 +1680,7 @@ dialog:modal {
 dialog::backdrop {
   overflow: hidden;
   overscroll-behavior: contain;
-  background: rgba(7, 11, 20, 0.62);
-  backdrop-filter: blur(2px);
+  background: rgba(7, 11, 20, 0.7);
 }
 
 .studio-dialog {
@@ -1687,6 +1696,16 @@ dialog::backdrop {
 
 .player-dialog {
   max-width: min(940px, calc(100vw - 20px));
+  max-height: min(92svh, 900px);
+  overflow-y: auto;
+}
+
+.player-dialog .dialog-top {
+  flex-wrap: wrap;
+}
+
+.player-top-actions {
+  flex-wrap: wrap;
 }
 
 .dialog-top {
@@ -2162,8 +2181,7 @@ dialog::backdrop {
     z-index: 50;
     min-height: calc(60px + env(safe-area-inset-bottom, 0px));
     padding: 4px 2px calc(4px + env(safe-area-inset-bottom, 0px));
-    background: color-mix(in srgb, var(--surface) 96%, transparent);
-    backdrop-filter: blur(12px);
+    background: var(--surface);
     border-top: 1px solid var(--border-subtle);
     box-shadow: 0 -6px 20px rgba(0, 0, 0, 0.12);
     display: grid;
@@ -2264,20 +2282,35 @@ dialog::backdrop {
 }
 
 .utility-pill.is-revision-list[aria-pressed="true"] {
-  background: #d97706;
-  border-color: #d97706;
+  background: #b45309;
+  border-color: #b45309;
   color: #ffffff;
 }
 
-.revision-btn-label {
+.revision-btn-label,
+.homework-btn-label {
   font-size: 0.75rem;
   white-space: nowrap;
 }
 
-@media (max-width: 1350px) {
-  .revision-btn-label {
+@media (max-width: 1480px) {
+  .revision-btn-label,
+  .homework-btn-label {
     display: none;
   }
+}
+
+.utility-pill.is-homework-pack {
+  gap: 5px;
+  padding-inline: 9px;
+  font-weight: 750;
+}
+
+.utility-pill.is-homework-pack[aria-pressed="true"],
+.utility-pill.is-homework-pack.has-items {
+  background: var(--brand);
+  border-color: var(--brand);
+  color: var(--brand-ink);
 }
 
 /* 1-Tap Voice Search Button Inside #q Search Bar */
@@ -2421,7 +2454,7 @@ dialog::backdrop {
 .compass-body {
   display: flex;
   flex-direction: column;
-  gap: 7px;
+  gap: 5px;
   min-width: 0;
 }
 
@@ -2433,14 +2466,17 @@ dialog::backdrop {
 }
 
 @media (min-width: 1024px) {
-  .compass-step:first-child {
+  .compass-step:first-child,
+  .compass-step.is-inline-row {
     flex-direction: row;
     align-items: center;
     gap: 8px;
   }
 
-  .compass-step:first-child .compass-step-badge {
+  .compass-step:first-child .compass-step-badge,
+  .compass-step.is-inline-row .compass-step-badge {
     flex-shrink: 0;
+    min-width: 118px;
   }
 
   .compass-step3-bar {
@@ -2451,6 +2487,7 @@ dialog::backdrop {
 
   .compass-step3-bar .compass-step-badge {
     flex-shrink: 0;
+    min-width: 118px;
   }
 
   .compass-step3-bar .compass-ch-picker-row {
@@ -2466,7 +2503,7 @@ dialog::backdrop {
   color: var(--brand);
 }
 
-/* Tap 1: Visible Native Script Language Pills */
+/* Tap 1 & 1B: Visible Native Script Language & Contest/Board Track Pills */
 .compass-lang-strip {
   display: flex;
   align-items: center;
@@ -2479,13 +2516,13 @@ dialog::backdrop {
 }
 
 .compass-lang-pill {
-  min-height: 30px;
-  padding: 0 10px;
+  min-height: 28px;
+  padding: 0 9px;
   border-radius: var(--r-pill);
   border: 1px solid var(--border-subtle);
   background: var(--surface-2);
   color: var(--ink);
-  font-size: 0.76rem;
+  font-size: 0.75rem;
   font-weight: 750;
   white-space: nowrap;
   display: inline-flex;
@@ -2495,21 +2532,64 @@ dialog::backdrop {
   cursor: pointer;
 }
 
+.compass-lang-pill.is-zero {
+  opacity: 0.56;
+  border-style: dashed;
+}
+
 .compass-lang-pill:hover {
   border-color: var(--brand);
   color: var(--brand);
+  opacity: 1;
 }
 
 .compass-lang-pill[aria-pressed="true"] {
   background: var(--brand);
   border-color: var(--brand);
+  border-style: solid;
   color: var(--brand-ink);
+  opacity: 1;
 }
 
 .compass-lang-cnt {
   font-family: var(--mono);
   font-size: 0.66rem;
   opacity: 0.82;
+}
+
+.fallback-ch-wrap {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--border-subtle);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.fallback-ch-label {
+  font-size: 0.78rem;
+  font-weight: 750;
+  color: var(--ink-2);
+}
+
+.fallback-ch-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.fallback-shelf-wrap {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.fallback-shelf-title {
+  margin: 0;
+  font-size: 0.88rem;
+  font-weight: 800;
+  color: var(--ink);
 }
 
 /* Tap 2: 4 Honest Student Situation Cards */
@@ -2915,9 +2995,9 @@ dialog::backdrop {
 }
 
 .step-save-btn[aria-pressed="true"] {
-  border-color: #d97706;
+  border-color: #f59e0b;
   background: rgba(245, 158, 11, 0.15);
-  color: #d97706;
+  color: var(--amber-ink);
 }
 
 .step-yt-btn {
@@ -2972,27 +3052,28 @@ dialog::backdrop {
   color: var(--ink);
 }
 
-/* Per-Card Progress & Revision Tracker Strip */
+/* Per-Card Progress, Revision & Homework Pack Tracker Strip */
 .card-tracker-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 5px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
 }
 
 .card-done-btn,
-.card-revise-btn {
+.card-revise-btn,
+.card-pack-btn {
   min-height: 28px;
-  padding: 0 6px;
+  padding: 0 5px;
   border-radius: var(--r-xs);
   border: 1px solid var(--border-subtle);
   background: var(--surface-2);
   color: var(--ink-2);
-  font-size: 0.69rem;
+  font-size: 0.68rem;
   font-weight: 750;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 4px;
+  gap: 3px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -3000,7 +3081,8 @@ dialog::backdrop {
 }
 
 .card-done-btn:hover,
-.card-revise-btn:hover {
+.card-revise-btn:hover,
+.card-pack-btn:hover {
   border-color: var(--brand);
   color: var(--brand);
 }
@@ -3014,7 +3096,13 @@ dialog::backdrop {
 .card-revise-btn[aria-pressed="true"] {
   background: rgba(245, 158, 11, 0.14);
   border-color: #f59e0b;
-  color: #d97706;
+  color: var(--amber-ink);
+}
+
+.card-pack-btn[aria-pressed="true"] {
+  background: var(--brand-soft);
+  border-color: var(--brand);
+  color: var(--brand);
 }
 
 .yt-external-cta.is-done-toggle[aria-pressed="true"] {
@@ -3112,9 +3200,715 @@ dialog::backdrop {
   .step-save-btn,
   .step-yt-btn,
   .card-done-btn,
-  .card-revise-btn {
+  .card-revise-btn,
+  .card-pack-btn {
     min-height: 44px;
     min-width: 44px;
-    font-size: 0.76rem;
+    font-size: 0.74rem;
   }
+}
+
+/* ==========================================================================
+   10. STUDIO v5.0 — THE 10x STUDENT & TEACHER UPGRADE
+   1-Tap Resume & Streak Pill · Chapter Cheat-Sheet, Trap Alert & Self-Check ·
+   Cinema Player Notes & Up-Next Queue · Classroom Homework Pack (?pick=...)
+   ========================================================================== */
+
+/* 10.1 Resume Last Lecture & Smart Study Streak Pill */
+.continue-study-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: var(--r-sm);
+  border: 1px solid color-mix(in srgb, var(--brand) 38%, var(--border-subtle));
+  background: color-mix(in srgb, var(--brand-soft) 55%, var(--surface));
+  min-width: 0;
+}
+
+.continue-study-btn {
+  flex: 1 1 200px;
+  min-width: 0;
+  min-height: 28px;
+  padding: 2px 10px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--brand);
+  background: var(--brand);
+  color: var(--brand-ink);
+  font-size: 0.75rem;
+  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  text-align: left;
+  overflow: hidden;
+}
+
+.continue-study-btn:hover {
+  filter: brightness(1.06);
+}
+
+#continue-study-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.continue-play-icon {
+  flex-shrink: 0;
+  font-size: 0.72rem;
+}
+
+.continue-ch-btn {
+  min-height: 28px;
+  padding: 0 9px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--border-control);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 0.73rem;
+  font-weight: 750;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.continue-ch-btn:hover {
+  border-color: var(--brand);
+  color: var(--brand);
+}
+
+.study-streak-pill {
+  min-height: 26px;
+  padding: 2px 8px;
+  border-radius: var(--r-pill);
+  background: var(--hot-soft);
+  color: var(--hot);
+  border: 1px solid color-mix(in srgb, var(--hot) 32%, transparent);
+  font-size: 0.71rem;
+  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.continue-dismiss-btn {
+  min-width: 28px;
+  min-height: 28px;
+  padding: 0;
+  border-radius: var(--r-pill);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.78rem;
+  display: inline-grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+
+.continue-dismiss-btn:hover {
+  background: var(--surface);
+  color: var(--ink);
+  border-color: var(--border-subtle);
+}
+
+/* 10.2 Assigned Classroom Homework Pack Banner & Curated Grid (?pick=...) */
+.assigned-pack-section {
+  background: var(--surface);
+  border: 1.5px solid var(--brand);
+  border-radius: var(--r-md);
+  padding: 12px;
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.assigned-pack-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.assigned-pack-title-col {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.assigned-pack-kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  width: fit-content;
+  padding: 2px 8px;
+  border-radius: var(--r-pill);
+  background: var(--brand);
+  color: var(--brand-ink);
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
+.assigned-pack-h2 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 850;
+  color: var(--ink);
+}
+
+.assigned-pack-sub {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.assigned-pack-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.assigned-pack-progress-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.76rem;
+  font-weight: 750;
+  color: var(--ink-2);
+}
+
+.assigned-pack-progress-row progress {
+  flex: 1 1 140px;
+  height: 8px;
+  accent-color: var(--wa);
+}
+
+.assign-order-badge {
+  padding: 2px 7px;
+  border-radius: 6px;
+  background: var(--brand);
+  color: var(--brand-ink);
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  font-weight: 850;
+  white-space: nowrap;
+}
+
+/* 10.3 Quick Concept Sheet, #1 Exam Trap & 3-Point Mastery Self-Check */
+.est-hours-badge {
+  padding: 2px 8px;
+  border-radius: var(--r-pill);
+  background: var(--surface-2);
+  color: var(--ink-2);
+  border: 1px solid var(--border-subtle);
+  font-size: 0.71rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.roadmap-cheatsheet {
+  border: 1px solid color-mix(in srgb, var(--brand) 32%, var(--border-subtle));
+  border-radius: var(--r-sm);
+  background: color-mix(in srgb, var(--surface-2) 65%, var(--surface));
+  overflow: clip;
+}
+
+.roadmap-cheatsheet-summary {
+  list-style: none;
+  padding: 8px 10px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px;
+  font-size: 0.8rem;
+  font-weight: 800;
+  color: var(--ink);
+  cursor: pointer;
+  user-select: none;
+}
+
+.roadmap-cheatsheet-summary::-webkit-details-marker {
+  display: none;
+}
+
+.roadmap-cheatsheet-summary::before {
+  content: "";
+  inline-size: 0.95em;
+  block-size: 0.95em;
+  flex-shrink: 0;
+  background-color: var(--brand);
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") no-repeat center / contain;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") no-repeat center / contain;
+  rotate: -90deg;
+  transition: rotate 0.16s ease;
+}
+
+.roadmap-cheatsheet[open] > .roadmap-cheatsheet-summary::before {
+  rotate: 0deg;
+}
+
+.cheatsheet-summary-meta {
+  margin-left: auto;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--brand);
+}
+
+.roadmap-cheatsheet-body {
+  padding: 8px 10px 10px;
+  border-top: 1px solid var(--border-subtle);
+  display: grid;
+  grid-template-columns: 1.15fr 0.95fr 1.1fr;
+  gap: 8px;
+}
+
+.cheatsheet-card {
+  padding: 8px 10px;
+  border-radius: var(--r-xs);
+  background: var(--surface);
+  border: 1px solid var(--border-subtle);
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.cheatsheet-card-label {
+  font-size: 0.72rem;
+  font-weight: 850;
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+  color: var(--brand);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.must-know-list {
+  margin: 0;
+  padding-left: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.76rem;
+  line-height: 1.38;
+  color: var(--ink);
+}
+
+.trap-callout {
+  background: color-mix(in srgb, var(--hot-soft) 50%, var(--surface));
+  border-color: color-mix(in srgb, var(--hot) 45%, var(--border-subtle));
+  border-left: 3.5px solid var(--hot);
+}
+
+.trap-callout .cheatsheet-card-label {
+  color: var(--hot);
+}
+
+.trap-text {
+  margin: 0;
+  font-size: 0.76rem;
+  line-height: 1.4;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.self-check-fieldset {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: var(--r-xs);
+  border: 1px solid var(--border-subtle);
+  background: var(--surface);
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.self-check-legend {
+  padding: 0 4px;
+  font-size: 0.72rem;
+  font-weight: 850;
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+  color: var(--wa);
+}
+
+.self-check-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  line-height: 1.35;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.self-check-item:hover {
+  background: var(--surface-2);
+}
+
+.self-check-item input[type="checkbox"] {
+  width: 17px;
+  height: 17px;
+  margin: 1px 0 0;
+  flex-shrink: 0;
+  accent-color: var(--wa);
+  cursor: pointer;
+}
+
+.self-check-item.is-checked span {
+  color: var(--wa);
+  font-weight: 700;
+}
+
+.self-check-complete-note {
+  margin: 2px 0 0;
+  font-size: 0.72rem;
+  font-weight: 800;
+  color: var(--wa);
+}
+
+/* 10.4 Cinema Study Player: Active Sample, Up-Next Queue & Personal Notes */
+.player-sample-btn.is-active,
+.player-sample-btn[aria-current="true"] {
+  background: var(--brand-soft);
+  border-color: var(--brand);
+  color: var(--brand);
+  font-weight: 800;
+}
+
+.player-stage {
+  max-height: 52svh;
+}
+
+.player-upnext {
+  padding: 8px 14px;
+  border-top: 1px solid var(--border-subtle);
+  background: var(--surface-2);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.player-upnext-label {
+  font-size: 0.73rem;
+  font-weight: 800;
+  color: var(--ink-2);
+}
+
+.player-upnext-strip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+  scrollbar-width: thin;
+}
+
+.player-upnext-btn {
+  min-height: 34px;
+  max-width: 260px;
+  padding: 4px 10px;
+  border-radius: var(--r-xs);
+  border: 1px solid var(--border-subtle);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 0.74rem;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.player-upnext-btn:hover {
+  border-color: var(--brand);
+  color: var(--brand);
+}
+
+.player-notes-panel {
+  padding: 10px 14px 14px;
+  border-top: 1px solid var(--border-subtle);
+  background: var(--surface);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.player-notes-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.player-notes-label {
+  font-size: 0.78rem;
+  font-weight: 800;
+  color: var(--ink);
+}
+
+.player-notes-status {
+  font-size: 0.71rem;
+  font-weight: 700;
+  color: var(--wa);
+}
+
+.player-notes-input {
+  width: 100%;
+  min-height: 58px;
+  padding: 8px 10px;
+  border-radius: var(--r-xs);
+  border: 1px solid var(--border-control);
+  background: var(--surface-2);
+  color: var(--ink);
+  font-size: 16px;
+  line-height: 1.4;
+  resize: vertical;
+}
+
+.player-notes-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.player-note-btn {
+  min-height: 34px;
+  padding: 0 10px;
+  border-radius: var(--r-xs);
+  border: 1px solid var(--border-control);
+  background: var(--surface-2);
+  color: var(--ink);
+  font-size: 0.74rem;
+  font-weight: 750;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.player-note-btn:hover {
+  border-color: var(--brand);
+  color: var(--brand);
+}
+
+.player-note-btn.is-wa {
+  border-color: color-mix(in srgb, var(--wa) 45%, var(--border-subtle));
+  background: var(--wa-soft);
+  color: var(--wa);
+}
+
+/* 10.5 Floating Classroom Homework Pack Builder Tray */
+.homework-tray {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 82;
+  width: min(560px, calc(100vw - 24px));
+  padding: 10px 12px;
+  border-radius: var(--r-md);
+  border: 1.5px solid var(--brand);
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--shadow-lg);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.hw-tray-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.hw-tray-title-wrap {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.hw-tray-title {
+  font-size: 0.82rem;
+  font-weight: 850;
+  color: var(--ink);
+}
+
+.hw-tray-hint {
+  font-size: 0.71rem;
+  color: var(--muted);
+}
+
+.hw-tray-icon-btn {
+  min-width: 30px;
+  min-height: 30px;
+  padding: 0;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--border-subtle);
+  background: var(--surface-2);
+  color: var(--ink-2);
+  font-size: 0.78rem;
+  display: inline-grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+
+.hw-tray-chips {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+  scrollbar-width: thin;
+}
+
+.hw-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--border-subtle);
+  background: var(--surface-2);
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--ink);
+  flex-shrink: 0;
+  max-width: 240px;
+}
+
+.hw-chip-txt {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hw-chip-rm {
+  min-width: 22px;
+  min-height: 22px;
+  padding: 0;
+  border-radius: 50%;
+  border: 0;
+  background: var(--surface-3);
+  color: var(--ink);
+  font-size: 0.68rem;
+  display: inline-grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+
+.hw-tray-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.hw-btn {
+  min-height: 32px;
+  padding: 0 10px;
+  border-radius: var(--r-xs);
+  border: 1px solid var(--border-control);
+  background: var(--surface-2);
+  color: var(--ink);
+  font-size: 0.74rem;
+  font-weight: 750;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+.hw-btn.is-primary {
+  border-color: var(--brand);
+  background: var(--brand);
+  color: var(--brand-ink);
+}
+
+.hw-btn.is-wa {
+  border-color: var(--wa);
+  background: var(--wa);
+  color: #ffffff;
+}
+
+.hw-btn.is-ghost {
+  margin-left: auto;
+  border-color: var(--border-subtle);
+  color: var(--muted);
+}
+
+/* Mobile & Touch Ergonomics for Studio v5.0 Controls (Strict >= 44x44px) */
+@media (max-width: 1023px), (pointer: coarse) {
+  .roadmap-cheatsheet-summary,
+  .self-check-item,
+  .continue-study-btn,
+  .continue-ch-btn,
+  .continue-dismiss-btn,
+  .player-upnext-btn,
+  .player-note-btn,
+  .hw-btn,
+  .hw-tray-icon-btn,
+  .hw-chip-rm {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  .self-check-item {
+    align-items: center;
+    padding: 6px 8px;
+  }
+}
+
+@media (max-width: 1023px) {
+  .roadmap-cheatsheet-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .cheatsheet-summary-meta {
+    margin-left: 0;
+  }
+
+  .homework-tray {
+    left: 8px;
+    right: 8px;
+    width: auto;
+    bottom: calc(66px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .hw-btn.is-ghost {
+    margin-left: 0;
+  }
+}
+
+
+/* ==========================================================================
+   11. ZERO-LAG ENGINE — Off-Screen Rendering Containment
+   (modern-web-guidance `defer-rendering-heavy-content`)
+   ========================================================================== */
+/* Long single-shelf views (chapter / query / educator mode can hold 100+ cards):
+   cards beyond the first viewport skip layout & paint until scrolled near. */
+.content-stream .cards-grid > .card:nth-child(n + 9) {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 340px;
+}
+
+.chapter-section.is-deferred {
+  contain-intrinsic-size: auto 340px;
 }

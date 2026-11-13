@@ -11,9 +11,19 @@
     } catch {}
   </script>
   <title>BoardTube — Classroom &amp; Chapterwise Class 10 &amp; 12 CBSE, ISC &amp; State Board Video Studio</title>
-  <meta name="description" content="Zero-noise 54-chapter Class 12 & Class 10 Board Exam video solution studio covering CBSE, ISC & all major Indian State Boards across 12 Indian languages, ranked purely by YouTube trend velocity.">
+  <meta name="description" content="Zero-noise chapterwise Class 12 &amp; Class 10 Board Exam video solution studio covering CBSE, ISC &amp; all major Indian State Boards across 12 Indian languages, ranked purely by YouTube trend velocity.">
+  <link rel="canonical" href="https://indrajeet877.github.io/boardtube/">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="BoardTube">
+  <meta property="og:title" content="BoardTube — Classroom &amp; Chapterwise Class 10 &amp; 12 CBSE, ISC &amp; State Board Video Studio">
+  <meta property="og:description" content="Zero-noise chapterwise Class 12 &amp; Class 10 Board Exam video solution studio covering CBSE, ISC &amp; all major Indian State Boards across 12 Indian languages, ranked purely by YouTube trend velocity.">
+  <meta property="og:url" content="https://indrajeet877.github.io/boardtube/">
+  <meta name="twitter:card" content="summary">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23be123c'/%3E%3Ctext x='16' y='21.5' text-anchor='middle' font-family='system-ui,-apple-system,sans-serif' font-weight='800' font-size='10' fill='%23ffffff'%3E10·12%3C/text%3E%3C/svg%3E">
-  <link rel="stylesheet" href="styles.css?v=4.0">
+  <link rel="preconnect" href="https://i.ytimg.com">
+  <link rel="dns-prefetch" href="https://i.ytimg.com">
+  <link rel="preload" href="data/videos.json" as="fetch" crossorigin>
+  <link rel="stylesheet" href="styles.css?v=5.0">
 </head>
 <body>
   <a class="skip-link visually-hidden" href="#main-content">Skip to guided finder &amp; video lectures</a>
@@ -26,7 +36,7 @@
           <span class="brand-glyph" id="brand-glyph" aria-hidden="true">✦</span>
           <strong id="brand-name">BoardTube</strong>
         </a>
-        <span class="utility-stats" id="hero-stats">54 Ch · 1,198 Verified Lectures</span>
+        <span class="utility-stats" id="hero-stats">54 Ch · 1,376 Verified Lectures</span>
       </h1>
 
       <nav class="ecosystem-nav" aria-label="Student Tube learning platforms" id="ecosystem-nav">
@@ -63,6 +73,12 @@
           <span aria-hidden="true">📌</span>
           <span class="revision-btn-label">Revision List</span>
           <span class="pill-counter" id="cnt-saved">0</span>
+        </button>
+
+        <button type="button" id="homework-pack-btn" class="utility-pill is-homework-pack" aria-pressed="false" aria-label="Classroom Homework Pack Builder">
+          <span aria-hidden="true">📋</span>
+          <span class="homework-btn-label">Homework</span>
+          <span class="pill-counter" id="cnt-pack">0</span>
         </button>
 
         <button type="button" id="share-whatsapp-btn" class="share-view-btn is-whatsapp" aria-label="Share current filtered view on WhatsApp">
@@ -113,13 +129,13 @@
             id="q"
             name="q"
             type="search"
-            placeholder="Type or 🎤 speak: Samakalan, Bijli, Ch 1, Om Sharma…"
+            placeholder="Search any chapter, board, language, or educator (e.g. Electrostatics, Integrals, Life Processes, Ashu Sir, Prashant Kirad, Xylem, Dinesh Sir)…"
             enterkeyhint="search"
             autocorrect="off"
             autocapitalize="off"
             spellcheck="false"
           >
-          <kbd id="key-hint" class="key-hint" aria-hidden="true">/</kbd>
+          <kbd id="key-hint" class="key-hint" aria-hidden="true">⌘K · /</kbd>
           <button type="button" id="clear-q" class="clear-btn" hidden aria-label="Clear search query">✕</button>
           <button type="button" id="voice-search-btn" class="voice-btn" aria-pressed="false" aria-label="Speak chapter or topic in Hindi or English">
             <span aria-hidden="true">🎤</span>
@@ -190,7 +206,7 @@
 
         <div class="rail-search-box">
           <label class="visually-hidden" for="ch-filter">Filter chapters in English or Hindi</label>
-          <input id="ch-filter" name="ch_filter" type="search" class="rail-input" placeholder="Find Ch 01, Samakalan, Bijli, GOC…" autocorrect="off" autocapitalize="off" spellcheck="false">
+          <input id="ch-filter" name="ch_filter" type="search" class="rail-input" placeholder="Find Ch 01, Calculus, Electricity, Life Processes…" autocorrect="off" autocapitalize="off" spellcheck="false">
         </div>
       </div>
 
@@ -200,6 +216,22 @@
     <main id="main-content" class="stream-column" tabindex="-1">
       <p id="live-status" class="visually-hidden" aria-live="polite"></p>
       <p id="count" class="visually-hidden">Loading verified video lectures…</p>
+
+      <!-- 0A. Resume Last Lecture & Smart Study Streak Pill -->
+      <div id="continue-study-bar" class="continue-study-bar" hidden>
+        <button type="button" id="continue-study-btn" class="continue-study-btn">
+          <span class="continue-play-icon" aria-hidden="true">▶</span>
+          <span id="continue-study-text">Continue Last Lecture</span>
+        </button>
+        <button type="button" id="continue-ch-btn" class="continue-ch-btn">
+          <span id="continue-ch-text">Open Chapter</span>
+        </button>
+        <span id="study-streak-pill" class="study-streak-pill" hidden></span>
+        <button type="button" id="continue-dismiss-btn" class="continue-dismiss-btn" aria-label="Dismiss continue lecture pill">✕</button>
+      </div>
+
+      <!-- 0B. Assigned Classroom Homework Pack (?pick=id1,id2,...) -->
+      <section id="assigned-pack-section" class="assigned-pack-section" aria-labelledby="assigned-pack-heading" hidden></section>
 
       <!-- 1. ZERO-TYPING "3-TAP VISUAL COMPASS" DIRECTLY ABOVE VIDEO GRID -->
       <section id="visual-compass" class="visual-compass" aria-labelledby="compass-heading">
@@ -214,9 +246,15 @@
 
         <div id="compass-body" class="compass-body">
           <!-- Tap 1: Comfort Language (Visible Native Script Pills) -->
-          <div class="compass-step">
+          <div class="compass-step is-inline-row">
             <span class="compass-step-badge">Tap 1 · Comfort Language</span>
             <div id="compass-langs" class="compass-lang-strip" role="group" aria-label="Choose your comfort language"></div>
+          </div>
+
+          <!-- Tap 1B: 1-Tap Exam / Contest / Board Stream Pills -->
+          <div class="compass-step is-inline-row">
+            <span class="compass-step-badge" id="compass-exam-badge">Board Stream</span>
+            <div id="compass-exams" class="compass-lang-strip compass-exam-strip" role="group" aria-label="Choose your target exam or contest track"></div>
           </div>
 
           <!-- Tap 2: Honest Student Situations ("How Can We Help You Today?") -->
@@ -263,9 +301,9 @@
   <footer id="colophon" class="site-footer">
     <div class="footer-inner">
       <div class="footer-brand-col">
-        <h2 class="footer-heading">Studio v4.0 · Student Clarity &amp; Classroom Edition</h2>
+        <h2 class="footer-heading">Studio v5.0 · Student Clarity &amp; Classroom Edition</h2>
         <p id="footer-copy">
-          Built for every student and teacher across India: use the 3-Tap Visual Compass, speak in Hindi/English via 🎤 Voice Search, follow the 1 → 2 → 3 Chapter Roadmap with Prerequisite Bridges, track completed chapters offline, and share any view on WhatsApp in one tap.
+          Built for every student and teacher across India: resume your last lecture in 1 tap, review Quick Concept Sheets &amp; #1 Exam Traps inside the 1 → 2 → 3 Chapter Roadmap, save personal lecture notes offline, and share Classroom Homework Packs (<code>?pick=…</code>) on WhatsApp.
         </p>
       </div>
       <div class="footer-links-col">
@@ -318,7 +356,7 @@
     </div>
     <div class="drawer-search-wrap">
       <label class="visually-hidden" for="drawer-ch-filter">Search chapter number, English name, or Hindi/Hinglish topic</label>
-      <input id="drawer-ch-filter" name="drawer_ch_filter" type="search" class="rail-input" placeholder="Search Ch 01, Samakalan, Bijli, Mendel…" autocorrect="off" autocapitalize="off" spellcheck="false">
+      <input id="drawer-ch-filter" name="drawer_ch_filter" type="search" class="rail-input" placeholder="Find Ch 01, Calculus, Electricity, Life Processes…" autocorrect="off" autocapitalize="off" spellcheck="false">
     </div>
     <div id="drawer-syllabus-tree" class="syllabus-tree drawer-tree"></div>
   </dialog>
@@ -382,7 +420,44 @@
     <h2 id="player-title" class="player-title">Lecture Player</h2>
     <div id="player-stage" class="player-stage"></div>
     <div id="player-samples" class="player-samples" hidden></div>
+    <div id="player-upnext" class="player-upnext" hidden></div>
+    <div id="player-notes-panel" class="player-notes-panel">
+      <div class="player-notes-head">
+        <label for="player-notes-input" class="player-notes-label">📝 Personal Timestamp &amp; Quick Revision Notes</label>
+        <span id="player-notes-status" class="player-notes-status" aria-live="polite">Saved offline on this device</span>
+      </div>
+      <textarea
+        id="player-notes-input"
+        name="player_notes"
+        class="player-notes-input"
+        rows="2"
+        placeholder="Jot key formulas, timestamps (e.g. 14:20 key trick), or exam traps to revise…"
+      ></textarea>
+      <div class="player-notes-actions">
+        <button type="button" id="player-notes-stamp-btn" class="player-note-btn">+ Key Formula / Mistake</button>
+        <button type="button" id="player-notes-copy-btn" class="player-note-btn">📋 Copy Notes</button>
+        <button type="button" id="player-notes-wa-btn" class="player-note-btn is-wa">📲 Share Notes on WhatsApp</button>
+      </div>
+    </div>
   </dialog>
+
+  <!-- Floating Classroom Homework Pack Builder Tray -->
+  <aside id="homework-tray" class="homework-tray" aria-label="Classroom Homework Pack Builder" hidden>
+    <div class="hw-tray-head">
+      <div class="hw-tray-title-wrap">
+        <strong id="hw-tray-title" class="hw-tray-title">📋 Classroom Homework Pack (0)</strong>
+        <span id="hw-tray-hint" class="hw-tray-hint">Pick 2–8 lectures across chapters to generate 1 shareable link</span>
+      </div>
+      <button type="button" id="hw-tray-close-btn" class="hw-tray-icon-btn" aria-label="Hide homework pack tray">✕</button>
+    </div>
+    <div id="hw-tray-chips" class="hw-tray-chips"></div>
+    <div class="hw-tray-actions">
+      <button type="button" id="hw-whatsapp-btn" class="hw-btn is-wa">📲 WhatsApp Assignment</button>
+      <button type="button" id="hw-copy-btn" class="hw-btn is-primary">🔗 Copy Assignment Link</button>
+      <button type="button" id="hw-preview-btn" class="hw-btn">👁 Preview Pack</button>
+      <button type="button" id="hw-clear-btn" class="hw-btn is-ghost">Clear</button>
+    </div>
+  </aside>
 
   <!-- Non-blocking Classroom Share & Voice Toast -->
   <div id="share-toast" class="share-toast" role="status" aria-live="polite" hidden>
@@ -394,8 +469,8 @@
   <noscript>
     <p class="noscript-banner">Enable JavaScript to browse and filter verified chapterwise video lectures.</p>
   </noscript>
-  <script src="site-config.js?v=4.0"></script>
-  <script src="pedagogy-data.js?v=4.0"></script>
-  <script src="app.js?v=4.0"></script>
+  <script src="site-config.js?v=5.0"></script>
+  <script src="pedagogy.js?v=5.0"></script>
+  <script src="app.js?v=5.0"></script>
 </body>
 </html>
